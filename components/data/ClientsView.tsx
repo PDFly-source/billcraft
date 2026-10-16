@@ -36,7 +36,7 @@ export const ClientsView: React.FC<{ onShowToast: (m: string) => void }> = ({ on
     if (!form.name.trim()) e.name = 'Client name is required';
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email address';
     if (form.phone && !/^[+\d][\d\s-]{6,17}$/.test(form.phone.trim())) e.phone = 'Invalid phone number';
-    if (form.gstin && !/^\d{2}[A-Z]{5}\d{4}[A-Z]\d[A-Z\d]?$/.test(form.gstin.toUpperCase())) e.gstin = 'GSTIN should look like 27AABCU9603R1ZM';
+    if (form.gstin && !/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(form.gstin.toUpperCase())) e.gstin = 'GSTIN should look like 27AABCU9603R1ZM (15 characters)';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
