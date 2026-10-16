@@ -199,17 +199,55 @@ function AppShell() {
   }, [activeTab, document, showToast]);
 
   // Navigation and Document Creation
-  const handleCreateDocument = (type: DocumentType) => {
-    const blank = createEmptyDocument(type, settings.defaultCurrency);
+  const handleCreateDocument = async (type: DocumentType) => {
+    const blank = createEmptyDocument(type, (profile?.defaultCurrency as DocumentModel['currency']) || settings.defaultCurrency);
     blank.template = settings.defaultTemplate;
     blank.colorTheme = settings.defaultColorTheme;
     blank.paperSize = settings.paperSize;
-    blank.autoRoundOff = settings.autoRoundOff;
-    blank.showBillCraftBranding = settings.showBranding;
+    blank.autoRoundOff = docPrefs.autoRoundOff ?? settings.autoRoundOff;
+    blank.showBillCraftBranding = docPrefs.showBranding ?? settings.showBranding;
+    // prefill from saved business profile (documents keep their own snapshot)
+    if (profile) {
+      blank.business = {
+        ...blank.business,
+        name: profile.businessName || blank.business.name,
+        phone: profile.phone,
+        email: profile.email,
+        website: profile.website || blank.business.website,
+        address: profile.address || blank.business.address,
+        gstin: profile.gstin,
+        pan: profile.pan || blank.business.pan,
+        state: profile.state || blank.business.state,
+        stateCode: profile.stateCode || blank.business.stateCode,
+      };
+      blank.payment = {
+        ...blank.payment,
+        bankName: profile.bankName || blank.payment.bankName,
+        accountHolder: profile.bankAccountHolder || blank.payment.accountHolder,
+        accountNumber: profile.bankAccountNumber || blank.payment.accountNumber,
+        ifsc: profile.bankIfsc || blank.payment.ifsc,
+        upiId: profile.upiId || blank.payment.upiId,
+        notes: profile.paymentInstructions || blank.payment.notes,
+      };
+      blank.terms = profile.defaultPaymentTerms || blank.terms;
+      blank.notes = profile.defaultFooterNotes || blank.notes;
+      blank.tax = { ...blank.tax, gstType: profile.defaultGstType };
+      if (profile.logoId) blank.business.logo = (await getImage(profile.logoId)) || '';
+      if (profile.signatureId) {
+        const sig = (await getImage(profile.signatureId)) || '';
+        if (sig) blank.signature = { ...blank.signature, type: 'upload', image: sig };
+      }
+    }
+    // global document preferences + sequential numbering
+    blank.watermark = docPrefs.watermark;
+    blank.density = docPrefs.density;
+    blank.meta.documentNumber = await nextDocumentNumber(type);
     setDocument(blank);
+    setSavedDocId(null);
+    setConvertingFromId(null);
     setHasStartedEditing(true);
     setActiveTab('editor');
-    showToast(`Created new ${type.toUpperCase()}`);
+    showToast(`New ${type.toUpperCase()} ${blank.meta.documentNumber}`);
   };
 
   const handleLoadDemo = () => {
