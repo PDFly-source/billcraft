@@ -1,36 +1,29 @@
 import type {NextConfig} from 'next';
 
+// Base path for GitHub Pages project sites (e.g. /billcraft).
+// The GitHub Actions deploy workflow injects the real repository name.
+// Leave empty for local development (http://localhost:3000).
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Static export: BillCraft is a browser-only app with no server runtime.
+  // Required for GitHub Pages hosting.
+  output: 'export',
+  basePath,
+  // Directory-style URLs so page refreshes work on static hosts.
+  trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Allow access to remote image placeholder.
+  // next/image is not available as an optimization service on static hosts.
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**', // This allows any path under the hostname
-      },
-    ],
+    unoptimized: true,
   },
-  output: 'standalone',
   transpilePackages: ['motion'],
-  webpack: (config, {dev}) => {
-    // HMR is disabled in AI Studio via DISABLE_HMR env var.
-    // Do not modify—file watching is disabled to prevent flickering during agent edits.
-    if (dev && process.env.DISABLE_HMR === 'true') {
-      config.watchOptions = {
-        ignored: /.*/,
-      };
-    }
-    return config;
-  },
 };
 
 export default nextConfig;

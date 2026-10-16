@@ -1,5 +1,6 @@
 'use client';
 
+import { asset } from '@/lib/assets';
 import React from 'react';
 import Image from 'next/image';
 
@@ -35,7 +36,7 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
         style={{ ...style, width: targetWidth, height: 'auto' }}
       >
         <Image
-          src="/assets/billcraft-logo.png"
+          src={asset("/assets/billcraft-logo.png")}
           alt="BillCraft — Create • Calculate • Share"
           width={targetWidth}
           height={Math.round((targetWidth * 120) / 500)}
@@ -44,7 +45,7 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
           referrerPolicy="no-referrer"
         />
         <Image
-          src="/assets/billcraft-logo-dark.png"
+          src={asset("/assets/billcraft-logo-dark.png")}
           alt="BillCraft — Create • Calculate • Share"
           width={targetWidth}
           height={Math.round((targetWidth * 120) / 500)}
@@ -84,7 +85,7 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
         {/* Desktop View: Full Official Logo with Tagline */}
         <div className="hidden sm:block">
           <Image
-            src="/assets/billcraft-logo.png"
+            src={asset("/assets/billcraft-logo.png")}
             alt="BillCraft — Create • Calculate • Share"
             width={width || 180}
             height={Math.round(((width || 180) * 120) / 500)}
@@ -93,7 +94,7 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
             referrerPolicy="no-referrer"
           />
           <Image
-            src="/assets/billcraft-logo-dark.png"
+            src={asset("/assets/billcraft-logo-dark.png")}
             alt="BillCraft — Create • Calculate • Share"
             width={width || 180}
             height={Math.round(((width || 180) * 120) / 500)}

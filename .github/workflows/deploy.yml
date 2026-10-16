@@ -1,0 +1,62 @@
+name: Deploy BillCraft to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Prevent conflicting deployments; latest run wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # Detected from the actual repository — not hardcoded.
+  NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+  NEXT_PUBLIC_SITE_URL: https://${{ github.event.repository.owner.login }}.github.io/${{ github.event.repository.name }}/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build production site
+        run: bun run build
+
+      - name: Verify build output
+        run: |
+          if [ ! -f "out/index.html" ]; then
+            echo "::error::Build did not produce out/index.html — deployment aborted."
+            exit 1
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

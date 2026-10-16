@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
+// Base path for GitHub Pages project sites (e.g. /billcraft).
+// Injected by the deploy workflow; empty for local development.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export const viewport: Viewport = {
   themeColor: '#593C8F',
   width: 'device-width',
@@ -14,11 +18,11 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
-      { url: '/favicon.png', sizes: '64x64', type: 'image/png' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: `${basePath}/favicon.png`, sizes: '64x64', type: 'image/png' },
+      { url: `${basePath}/icon.svg`, type: 'image/svg+xml' },
     ],
     apple: [
-      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+      { url: `${basePath}/apple-icon.png`, sizes: '180x180', type: 'image/png' },
     ],
   },
   openGraph: {

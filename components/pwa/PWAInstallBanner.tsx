@@ -1,5 +1,6 @@
 'use client';
 
+import { asset } from '@/lib/assets';
 import React, { useState } from 'react';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { useIsMounted } from '@/hooks/useIsMounted';
@@ -25,7 +26,7 @@ export const PWAInstallBanner: React.FC = () => {
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/assets/billcraft-emblem.png"
+            src={asset("/assets/billcraft-emblem.png")}
             alt="BillCraft"
             className="w-5 h-5 object-contain rounded-md shrink-0 shadow-xs"
           />
@@ -72,7 +73,7 @@ export const PWAInstallBanner: React.FC = () => {
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/assets/billcraft-emblem.png"
+                src={asset("/assets/billcraft-emblem.png")}
                 alt="BillCraft"
                 className="w-9 h-9 object-contain rounded-xl shadow-md"
               />

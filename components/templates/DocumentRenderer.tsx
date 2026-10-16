@@ -1,5 +1,6 @@
 'use client';
 
+import { asset } from '@/lib/assets';
 import React, { useEffect, useState } from 'react';
 import { DocumentModel } from '@/types/document';
 import { calculateDocument, calculateItemRow } from '@/lib/calculations';
@@ -87,7 +88,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
           <span className="flex items-center gap-2 font-medium">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/assets/billcraft-emblem.png"
+              src={asset("/assets/billcraft-emblem.png")}
               alt="BillCraft"
               className="w-4 h-4 object-contain inline-block shrink-0"
             />
