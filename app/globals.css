@@ -187,7 +187,10 @@ body {
   content: "";
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, var(--bd), transparent);
+  /* NOTE: solid color (not a gradient) — the line collapses to 0px width in
+     the layout, and html2canvas crashes on zero-size gradients during PDF
+     export (addColorStop with non-finite offsets). */
+  background: var(--bd);
 }
 
 /* 6-Tab Bottom Navigation Bar */

@@ -143,45 +143,6 @@ export const BillCraftSvgSprite: React.FC = () => {
         <symbol id="file-preview" viewBox="0 0 24 24">
           <use href="#file-preview-outline" />
         </symbol>
-        <symbol id="logo" viewBox="0 0 48 48">
-          <defs>
-            <linearGradient id="bc-badge-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#FAF6EE" />
-              <stop offset="100%" stopColor="#F2EBDB" />
-            </linearGradient>
-            <linearGradient id="bc-doc-grad" x1="0" y1="0" x2="0.8" y2="1">
-              <stop offset="0%" stopColor="#6F4AB6" />
-              <stop offset="50%" stopColor="#593C8F" />
-              <stop offset="100%" stopColor="#42296E" />
-            </linearGradient>
-            <linearGradient id="bc-gold-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#FFE082" />
-              <stop offset="100%" stopColor="#F0B83A" />
-            </linearGradient>
-          </defs>
-          <rect width="48" height="48" rx="12" fill="url(#bc-badge-grad)" stroke="#E5DCCB" strokeWidth="1.2" />
-          {/* Purple Document Icon */}
-          <path
-            d="M 13 9 L 27 9 L 35 17 L 35 37 A 3 3 0 0 1 32 40 L 16 40 A 3 3 0 0 1 13 37 Z"
-            fill="url(#bc-doc-grad)"
-          />
-          {/* Golden Folded-Corner Accent */}
-          <path
-            d="M 27 9 L 35 17 L 28.5 17 A 1.5 1.5 0 0 1 27 15.5 Z"
-            fill="url(#bc-gold-grad)"
-          />
-          {/* Mint/Teal Checkmark */}
-          <path
-            d="M 18.5 25.5 L 23 30 L 30 20.5"
-            fill="none"
-            stroke="#A8D5BA"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* Golden Accent Line */}
-          <rect x="18" y="34.5" width="12" height="1.8" rx="0.9" fill="#FFD066" opacity="0.9" />
-        </symbol>
       </defs>
     </svg>
   );

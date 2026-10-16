@@ -4,11 +4,21 @@ import { asset } from '@/lib/assets';
 import React from 'react';
 import Image from 'next/image';
 
+/**
+ * Official BillCraft brand assets — generated directly from the supplied
+ * official logo artwork (do not substitute or redraw):
+ *   /assets/billcraft-logo.png   full lockup: emblem + wordmark + tagline (871 x 930)
+ *   /assets/billcraft-emblem.png emblem square (512 x 512)
+ */
+const LOGO_WIDTH = 871;
+const LOGO_HEIGHT = 930;
+const LOGO_ASPECT = LOGO_HEIGHT / LOGO_WIDTH;
+
 export interface BillCraftLogoProps {
   /**
-   * 'emblem' = Just the document emblem with purple document, mint checkmark, and golden fold
+   * 'emblem' = Emblem-only square (compact icon contexts)
    * 'full' = Full official lockup with emblem, BillCraft wordmark, and tagline
-   * 'responsive' = Full logo on desktop (sm+), compact lockup on mobile
+   * 'responsive' = Full logo on desktop (sm+), emblem + brand text on mobile
    */
   variant?: 'emblem' | 'full' | 'responsive';
   size?: number;
@@ -38,18 +48,9 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
         <Image
           src={asset("/assets/billcraft-logo.png")}
           alt="BillCraft — Create • Calculate • Share"
-          width={targetWidth}
-          height={Math.round((targetWidth * 120) / 500)}
-          className="w-full h-auto object-contain dark:hidden"
-          priority={priority}
-          referrerPolicy="no-referrer"
-        />
-        <Image
-          src={asset("/assets/billcraft-logo-dark.png")}
-          alt="BillCraft — Create • Calculate • Share"
-          width={targetWidth}
-          height={Math.round((targetWidth * 120) / 500)}
-          className="w-full h-auto object-contain hidden dark:block"
+          width={LOGO_WIDTH}
+          height={LOGO_HEIGHT}
+          className="w-full h-auto object-contain rounded-lg"
           priority={priority}
           referrerPolicy="no-referrer"
         />
@@ -62,16 +63,15 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
       <div className={`inline-flex items-center shrink-0 ${className}`} style={style}>
         {/* Mobile View: Compact Emblem + Brand Name */}
         <div className="flex sm:hidden items-center gap-2">
-          <svg
+          <Image
+            src={asset("/assets/billcraft-emblem.png")}
+            alt="BillCraft Emblem"
             width={size || 32}
             height={size || 32}
-            viewBox="0 0 48 48"
-            className="shrink-0"
-            aria-label="BillCraft Emblem"
-            role="img"
-          >
-            <use href="#logo" />
-          </svg>
+            className="shrink-0 rounded-md object-contain"
+            priority={priority}
+            referrerPolicy="no-referrer"
+          />
           <div className="flex flex-col">
             <span className="font-extrabold text-[15px] tracking-[0.04em] text-[#17151F] dark:text-[#F8F5FC] leading-tight">
               BILL<span className="text-[#593C8F] dark:text-[#A8D5BA]">CRAFT</span>
@@ -87,18 +87,10 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
           <Image
             src={asset("/assets/billcraft-logo.png")}
             alt="BillCraft — Create • Calculate • Share"
-            width={width || 180}
-            height={Math.round(((width || 180) * 120) / 500)}
-            className="w-full h-auto object-contain dark:hidden"
-            priority={priority}
-            referrerPolicy="no-referrer"
-          />
-          <Image
-            src={asset("/assets/billcraft-logo-dark.png")}
-            alt="BillCraft — Create • Calculate • Share"
-            width={width || 180}
-            height={Math.round(((width || 180) * 120) / 500)}
-            className="w-full h-auto object-contain hidden dark:block"
+            width={LOGO_WIDTH}
+            height={LOGO_HEIGHT}
+            style={{ height: height || 52, width: 'auto' }}
+            className="object-contain rounded-lg"
             priority={priority}
             referrerPolicy="no-referrer"
           />
@@ -107,19 +99,18 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
     );
   }
 
-  // Default: SVG Emblem using the official symbol definition (#logo)
+  // Default: Official emblem square
   const emblemDim = width || size || 32;
   return (
-    <svg
+    <Image
+      src={asset("/assets/billcraft-emblem.png")}
+      alt="BillCraft Emblem"
       width={emblemDim}
       height={height || emblemDim}
-      viewBox="0 0 48 48"
-      className={`shrink-0 ${className}`}
+      className={`shrink-0 rounded-md object-contain ${className}`}
       style={style}
-      aria-label="BillCraft Emblem"
-      role="img"
-    >
-      <use href="#logo" />
-    </svg>
+      priority={priority}
+      referrerPolicy="no-referrer"
+    />
   );
 };

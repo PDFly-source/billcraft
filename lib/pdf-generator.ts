@@ -46,14 +46,22 @@ function oklchToRgb(lStr: string, cStr: string, hStr: string, aStr?: string): st
   const l = Math.max(0, Math.min(1, parseCoord(lStr)));
   const c = Math.max(0, parseCoord(cStr));
   const h = parseCoord(hStr);
-  let a = 1;
-  if (aStr) {
-    a = Math.max(0, Math.min(1, parseCoord(aStr)));
-  }
 
   const hRad = (h * Math.PI) / 180;
   const aLab = c * Math.cos(hRad);
   const bLab = c * Math.sin(hRad);
+  return oklabToRgbString(l, aLab, bLab, aStr);
+}
+
+/**
+ * Convert OKLAB parameters (L, a, b, alpha) to a standard rgb/rgba color string.
+ * Shared pipeline used by both oklch() and oklab() conversion.
+ */
+function oklabToRgbString(l: number, aLab: number, bLab: number, aStr?: string): string {
+  let a = 1;
+  if (aStr) {
+    a = Math.max(0, Math.min(1, parseCoord(aStr)));
+  }
   const l_ = l + 0.3963377774 * aLab + 0.2158037573 * bLab;
   const m_ = l - 0.1055613458 * aLab - 0.0638541728 * bLab;
   const s_ = l - 0.0894841775 * aLab - 1.2914855480 * bLab;
@@ -74,13 +82,197 @@ function oklchToRgb(lStr: string, cStr: string, hStr: string, aStr?: string): st
 }
 
 /**
- * Replace all occurrences of oklch(...) in a CSS string with compatible rgb/rgba
+ * Whether a string contains CSS color functions html2canvas cannot parse.
+ */
+function hasUnsupportedColorFunction(value: string): boolean {
+  return (
+    value.includes('oklch') ||
+    value.includes('oklab') ||
+    value.includes('color-mix') ||
+    value.includes('color(')
+  );
+}
+
+/**
+ * Convert a single color(srgb R G B / A) component to a 0-255 channel value.
+ * Components can be numbers (0-1) or percentages.
+ */
+function srgbComponentTo255(val: string): number {
+  const v = val.trim();
+  const num = v.endsWith('%') ? (parseFloat(v) / 100) * 255 : parseFloat(v) * 255;
+  return Math.max(0, Math.min(255, Math.round(num)));
+}
+
+function srgbAlphaToUnit(val: string | undefined): number {
+  if (!val) return 1;
+  const v = val.trim();
+  const num = v.endsWith('%') ? parseFloat(v) / 100 : parseFloat(v);
+  return Math.max(0, Math.min(1, isNaN(num) ? 1 : num));
+}
+
+/**
+ * Convert color(srgb R G B / A) to rgb/rgba.
+ */
+function colorSrgbToRgb(rStr: string, gStr: string, bStr: string, aStr?: string): string {
+  const r = srgbComponentTo255(rStr);
+  const g = srgbComponentTo255(gStr);
+  const b = srgbComponentTo255(bStr);
+  const a = srgbAlphaToUnit(aStr);
+  return a < 1 ? `rgba(${r}, ${g}, ${b}, ${Number(a.toFixed(3))})` : `rgb(${r}, ${g}, ${b})`;
+}
+
+interface ParsedColor {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+/**
+ * Parse rgb(), rgba() (comma or space separated), #hex and the transparent
+ * keyword into RGBA channels. Returns null when the value cannot be resolved
+ * statically (e.g. var(), currentcolor, oklch leftovers).
+ */
+function parseStaticColor(input: string): ParsedColor | null {
+  const s = input.trim().toLowerCase();
+  if (!s || s === 'none') return null;
+  if (s === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  if (s === 'currentcolor' || s.includes('var(') || s.includes('oklab') || s.includes('oklch')) return null;
+
+  const hex = s.match(/^#([0-9a-f]{3,8})$/);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3 || h.length === 4) h = h.split('').map((ch) => ch + ch).join('');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+    return { r, g, b, a };
+  }
+
+  const fn = s.match(/^(rgba?)\s*\(([^)]*)\)$/);
+  if (fn) {
+    const parts = fn[2].replace(/\//g, ' ').replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+    if (parts.length >= 3) {
+      const ch = (v: string, scale255 = true) => {
+        const n = v.endsWith('%') ? (parseFloat(v) / 100) * (scale255 ? 255 : 1) : parseFloat(v);
+        return Math.max(0, Math.min(scale255 ? 255 : 1, isNaN(n) ? 0 : n));
+      };
+      return {
+        r: Math.round(ch(parts[0])),
+        g: Math.round(ch(parts[1])),
+        b: Math.round(ch(parts[2])),
+        a: parts[3] !== undefined ? ch(parts[3], false) : 1,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Split a string on commas at parenthesis depth 0.
+ */
+function splitTopLevelArgs(input: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of input) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      out.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) out.push(current);
+  return out.map((a) => a.trim());
+}
+
+/**
+ * Approximate color-mix(in <space>, <colorA> [pA%], <colorB> [pB%]) in sRGB.
+ * Returns the first statically parseable color when mixing is impossible.
+ */
+function mixColorArgs(aRaw: string, bRaw: string): string {
+  const stripPct = (raw: string): { color: string; pct?: number } => {
+    const m = raw.match(/^(.*?)(?:\s+([\d.]+)%)?$/);
+    const color = (m?.[1] ?? raw).trim();
+    const pct = m?.[2] !== undefined ? parseFloat(m[2]) : undefined;
+    return { color, pct };
+  };
+  const A = stripPct(aRaw);
+  const B = stripPct(bRaw);
+  const ca = parseStaticColor(A.color);
+  const cb = parseStaticColor(B.color);
+
+  if (ca && cb) {
+    const pa = A.pct ?? (B.pct !== undefined ? 100 - B.pct : undefined);
+    const pb = B.pct ?? (A.pct !== undefined ? 100 - A.pct : undefined);
+    let t = 0.5;
+    if (pa !== undefined && pb !== undefined && pa + pb > 0) t = pa / (pa + pb);
+    else if (pa !== undefined) t = pa / 100;
+    else if (pb !== undefined) t = 1 - pb / 100;
+    const mix = (x: number, y: number) => Math.round(x + (y - x) * t);
+    const a = Number((ca.a + (cb.a - ca.a) * t).toFixed(3));
+    const rgb = `rgb(${mix(ca.r, cb.r)}, ${mix(ca.g, cb.g)}, ${mix(ca.b, cb.b)})`;
+    return a < 1 ? rgb.replace('rgb', 'rgba').replace(')', `, ${a})`) : rgb;
+  }
+  if (ca) {
+    const s = ca.a < 1 ? `rgba(${ca.r}, ${ca.g}, ${ca.b}, ${Number(ca.a.toFixed(3))})` : `rgb(${ca.r}, ${ca.g}, ${ca.b})`;
+    return s;
+  }
+  if (cb) {
+    const s = cb.a < 1 ? `rgba(${cb.r}, ${cb.g}, ${cb.b}, ${Number(cb.a.toFixed(3))})` : `rgb(${cb.r}, ${cb.g}, ${cb.b})`;
+    return s;
+  }
+  return '#17151F';
+}
+
+/**
+ * Replace color-mix(...) calls (including nested ones) with static rgb colors.
+ */
+function replaceColorMixCalls(value: string): string {
+  let out = value;
+  for (let pass = 0; pass < 6; pass++) {
+    const idx = out.toLowerCase().indexOf('color-mix(');
+    if (idx === -1) break;
+    let depth = 0;
+    let end = -1;
+    for (let i = idx + 'color-mix('.length - 1; i < out.length; i++) {
+      if (out[i] === '(') depth++;
+      else if (out[i] === ')') {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) break;
+    const inner = out.slice(idx + 'color-mix('.length, end);
+    const args = splitTopLevelArgs(inner);
+    // args: ["in <space>", "<colorA> [pA%]", "<colorB> [pB%]", ...normalizer args ignored]
+    const replacement =
+      args.length >= 3 ? mixColorArgs(args[1], args[2]) : '#17151F';
+    out = out.slice(0, idx) + replacement + out.slice(end + 1);
+  }
+  return out;
+}
+
+/**
+ * Replace all occurrences of oklch(), oklab(), color(srgb) and color-mix()
+ * in a CSS string with rgb/rgba colors that html2canvas supports.
  */
 export function sanitizeOklchString(value: string): string {
-  if (!value || typeof value !== 'string' || !value.includes('oklch')) {
+  if (!value || typeof value !== 'string' || !hasUnsupportedColorFunction(value)) {
     return value;
   }
-  return value.replace(/oklch\(\s*([^/)]+?)(?:\s*\/\s*([^)]+?))?\s*\)/gi, (_match, coords, alpha) => {
+
+  let out = value;
+
+  // oklch(L C H / A)
+  out = out.replace(/oklch\(\s*([^/)]+?)(?:\s*\/\s*([^)]+?))?\s*\)/gi, (_match, coords, alpha) => {
     try {
       const parts = coords.trim().split(/\s+/);
       if (parts.length >= 3) {
@@ -91,6 +283,38 @@ export function sanitizeOklchString(value: string): string {
     }
     return '#17151F';
   });
+
+  // oklab(L A B / A)
+  out = out.replace(/oklab\(\s*([^/)]+?)(?:\s*\/\s*([^)]+?))?\s*\)/gi, (_match, coords, alpha) => {
+    try {
+      const parts = coords.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        const l = Math.max(0, Math.min(1, parseCoord(parts[0])));
+        return oklabToRgbString(l, parseCoord(parts[1]), parseCoord(parts[2]), alpha?.trim());
+      }
+    } catch {
+      // Fallback safe value
+    }
+    return '#17151F';
+  });
+
+  // color(srgb R G B / A)
+  out = out.replace(/color\(\s*srgb\s+([^/)]+?)(?:\s*\/\s*([^)]+?))?\s*\)/gi, (_match, coords, alpha) => {
+    try {
+      const parts = coords.trim().split(/\s+/);
+      if (parts.length >= 3) {
+        return colorSrgbToRgb(parts[0], parts[1], parts[2], alpha?.trim());
+      }
+    } catch {
+      // Fallback safe value
+    }
+    return '#17151F';
+  });
+
+  // color-mix(in <space>, A, B) — innermost conversions happen first
+  out = replaceColorMixCalls(out);
+
+  return out;
 }
 
 /**
@@ -102,10 +326,18 @@ function createStyleProxy(realStyle: CSSStyleDeclaration): CSSStyleDeclaration {
       if (prop === 'getPropertyValue') {
         return (propName: string) => {
           const val = target.getPropertyValue(propName);
-          return sanitizeOklchString(val);
+          const sanitized = sanitizeOklchString(val);
+          const w = (typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>) : {}) as Record<string, unknown>;
+          if (w.__BC_DEBUG__ && typeof sanitized === 'string' && sanitized.includes('gradient')) {
+            console.log('[BCDBG]', propName, '=>', sanitized);
+          }
+          return sanitized;
         };
       }
-      const val = Reflect.get(target, prop, receiver);
+      // NOTE: pass `target` (not the proxy) as receiver — native
+      // CSSStyleDeclaration accessors throw "Illegal invocation" when
+      // invoked with a Proxy as `this`.
+      const val = Reflect.get(target, prop, target);
       if (typeof val === 'function') {
         return (...args: unknown[]) => {
           const res = (val as (...a: unknown[]) => unknown).apply(target, args);
@@ -155,11 +387,34 @@ export async function generatePDFBlob(
   const patchedGetComputedStyle = function (elt: Element, pseudoElt?: string | null) {
     if (!origWindowGetComputedStyle) return {} as CSSStyleDeclaration;
     const realStyle = origWindowGetComputedStyle.call(window, elt, pseudoElt);
-    return createStyleProxy(realStyle);
+    const proxied = createStyleProxy(realStyle);
+    try {
+      const w = (typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>) : {}) as Record<string, unknown>;
+      if (w.__BC_DEBUG__) {
+        console.log('[BCDBG-EL]', elt.tagName, ((elt as HTMLElement).className + '').slice(0, 60), 'pseudo:', pseudoElt || '-');
+      }
+    } catch { /* ignore */ }
+    return proxied;
   } as typeof window.getComputedStyle;
 
   if (typeof window !== 'undefined') {
     window.getComputedStyle = patchedGetComputedStyle;
+  }
+
+  // Guard against html2canvas computing non-finite gradient color-stop offsets
+  // for zero-size elements (e.g. collapsed flex/absolute decoration lines in the
+  // cloned window layout). Those elements are invisible anyway, so skipping
+  // their stops has no visual effect but prevents the whole export from crashing
+  // with "Failed to execute 'addColorStop' ... non-finite".
+  const proto = typeof CanvasGradient !== 'undefined' ? (CanvasGradient.prototype as unknown as {
+    addColorStop: (this: CanvasGradient, offset: number, color: string) => void;
+  }) : null;
+  const origAddColorStop = proto?.addColorStop;
+  if (proto && origAddColorStop) {
+    proto.addColorStop = function (offset: number, color: string) {
+      if (!Number.isFinite(offset)) return;
+      return origAddColorStop.call(this, offset, color);
+    };
   }
 
   let canvas: HTMLCanvasElement;
@@ -170,7 +425,12 @@ export async function generatePDFBlob(
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
+      // Use the live viewport width so the cloned document keeps the SAME
+      // responsive layout as the visible page. Using element.scrollWidth here
+      // reflows the whole app into a narrow "mobile" layout inside the clone,
+      // which can hide the preview pane entirely (0x0 canvas) or collapse
+      // decoration elements.
+      windowWidth: (typeof window !== 'undefined' && window.innerWidth) || element.scrollWidth,
       onclone: (clonedDoc: Document, clonedElement: HTMLElement) => {
         // 1. Patch iframe window getComputedStyle
         if (clonedDoc.defaultView) {
@@ -210,6 +470,9 @@ export async function generatePDFBlob(
   } finally {
     if (typeof window !== 'undefined' && origWindowGetComputedStyle) {
       window.getComputedStyle = origWindowGetComputedStyle;
+    }
+    if (proto && origAddColorStop) {
+      proto.addColorStop = origAddColorStop;
     }
   }
 
