@@ -1,0 +1,6 @@
+{
+  "name": "BillCraft",
+  "description": "Professional business documents studio for creating invoices, quotations, receipts, estimates, and proforma invoices entirely in your browser with zero backend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
