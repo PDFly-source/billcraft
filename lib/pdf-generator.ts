@@ -401,6 +401,57 @@ export async function generatePDFBlob(
     window.getComputedStyle = patchedGetComputedStyle;
   }
 
+  // On narrow layouts the target element can live inside a display:none
+  // container (the live preview pane is desktop-only), e.g. when the user
+  // taps Export PDF from the editor on mobile. html2canvas cannot render a
+  // zero-size element, so temporarily un-hide the ancestor chain and stack
+  // the host behind the app UI for the duration of the render.
+  const forceRenderable = (): (() => void) => {
+    if (typeof window === 'undefined' || element.getClientRects().length > 0) {
+      return () => undefined;
+    }
+    const doc = element.ownerDocument;
+    const win = doc?.defaultView;
+    if (!win) return () => undefined;
+    const restores: Array<() => void> = [];
+    const hiddenChain: HTMLElement[] = [];
+    let node: HTMLElement | null = element;
+    while (node && node !== doc.body) {
+      if (win.getComputedStyle(node).display === 'none') {
+        hiddenChain.push(node);
+      }
+      node = node.parentElement;
+    }
+    hiddenChain.forEach((n) => {
+      const prev = n.style.display;
+      n.style.display = 'block';
+      restores.push(() => {
+        n.style.display = prev;
+      });
+    });
+    const host = hiddenChain.length ? hiddenChain[hiddenChain.length - 1] : element;
+    const s = host.style;
+    const prev = { position: s.position, top: s.top, left: s.left, zIndex: s.zIndex, width: s.width, pointerEvents: s.pointerEvents };
+    s.position = 'fixed';
+    s.top = '0';
+    s.left = '0';
+    s.zIndex = '-2147483647';
+    s.width = `${pageWidth}mm`;
+    s.pointerEvents = 'none';
+    restores.push(() => {
+      s.position = prev.position;
+      s.top = prev.top;
+      s.left = prev.left;
+      s.zIndex = prev.zIndex;
+      s.width = prev.width;
+      s.pointerEvents = prev.pointerEvents;
+    });
+    return () => {
+      for (let i = restores.length - 1; i >= 0; i--) restores[i]();
+    };
+  };
+  const restoreRenderable = forceRenderable();
+
   // Guard against html2canvas computing non-finite gradient color-stop offsets
   // for zero-size elements (e.g. collapsed flex/absolute decoration lines in the
   // cloned window layout). Those elements are invisible anyway, so skipping
@@ -468,6 +519,7 @@ export async function generatePDFBlob(
       },
     });
   } finally {
+    restoreRenderable();
     if (typeof window !== 'undefined' && origWindowGetComputedStyle) {
       window.getComputedStyle = origWindowGetComputedStyle;
     }
