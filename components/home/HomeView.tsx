@@ -39,10 +39,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* Top Header Row */}
       <div className="row sp">
         <div className="row">
-          <BillCraftLogo size={30} />
-          <b style={{ letterSpacing: '.04em', fontSize: '16px' }} className="text-[#17151F] dark:text-[#F8F5FC]">
-            BILLCRAFT
-          </b>
+          <BillCraftLogo variant="compact" width={56} />
         </div>
         <div className="row" style={{ gap: '6px' }}>
           {onViewWelcome && (

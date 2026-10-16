@@ -29,9 +29,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* BillCraft Studio Card */}
       <div className="card row" style={{ padding: '10px' }}>
-        <BillCraftLogo size={40} />
+        <BillCraftLogo variant="compact" width={56} />
         <div>
-          <b style={{ fontSize: '13px', color: 'var(--ink)' }}>BillCraft</b>
           <div className="m" style={{ fontSize: '10.5px', color: 'var(--mut)' }}>
             Local-first business document studio
           </div>

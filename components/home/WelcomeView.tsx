@@ -14,7 +14,7 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({ onGetStarted, onExplor
     <div className="max-w-[420px] mx-auto py-2 px-1 flex flex-col min-h-[580px] justify-between animate-in fade-in duration-200">
       {/* Brand Header */}
       <div className="flex items-center justify-between">
-        <BillCraftLogo variant="full" width={220} priority />
+        <BillCraftLogo variant="full" width={240} priority />
         <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#F1ECF8] dark:bg-[#281E36] text-[#593C8F] dark:text-[#A8D5BA]">
           v2.0
         </span>

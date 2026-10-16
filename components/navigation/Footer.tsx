@@ -3,6 +3,7 @@
 import React from 'react';
 import { NavTab } from './Header';
 import { ShieldCheck, Lock } from 'lucide-react';
+import { BillCraftLogo } from '@/components/ui/BillCraftLogo';
 
 interface FooterProps {
   onNavigate: (tab: NavTab) => void;
@@ -14,7 +15,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
         <div className="space-y-1 text-center sm:text-left">
           <div className="flex items-center justify-center sm:justify-start gap-2">
-            <span className="font-black text-sm text-slate-900 dark:text-slate-100">BILLCRAFT</span>
+            <BillCraftLogo variant="compact" width={44} />
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
               CREATE • CALCULATE • SHARE
             </span>
