@@ -557,3 +557,15 @@ body {
     margin: 10mm;
   }
 }
+
+/* ---- History print: print only the off-screen saved-document host ---- */
+@media print {
+  body.bc-history-printing > *:not(#history-print-host) { display: none !important; }
+  body.bc-history-printing #history-print-host {
+    display: block !important;
+    position: static !important;
+    left: 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+  }
+}

@@ -34,6 +34,17 @@ import { PWAInstallBanner } from '@/components/pwa/PWAInstallBanner';
 import { OfflineIndicator } from '@/components/pwa/OfflineIndicator';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { downloadPDF } from '@/lib/pdf-generator';
+import { LocalDataProvider, useLocalData } from '@/hooks/useLocalData';
+import { ClientsView } from '@/components/data/ClientsView';
+import { ProductsView } from '@/components/data/ProductsView';
+import { HistoryView } from '@/components/data/HistoryView';
+import { DashboardSection } from '@/components/data/DashboardSection';
+import { PrivacyNoticeCard, PRIVACY_NOTICE_TEXT } from '@/components/data/DataSections';
+import { nextDocumentNumber, getDraft, saveDraft, clearDraft, getImage } from '@/lib/db/repository';
+import { calculateDocument } from '@/lib/calculations';
+import { convertDocument as convertDocModel } from '@/lib/sample-data';
+import { SavedDocument, DraftRecord } from '@/types/local';
+import { Undo2, X } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
@@ -47,6 +58,14 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function BillCraftApp() {
+  return (
+    <LocalDataProvider>
+      <AppShell />
+    </LocalDataProvider>
+  );
+}
+
+function AppShell() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedToolId, setSelectedToolId] = useState<ToolId>('gst');
   const [document, setDocument] = useState<DocumentModel>(() => createSampleDocument('invoice'));
@@ -55,6 +74,14 @@ export default function BillCraftApp() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [splashState, setSplashState] = useState<'show' | 'fade' | 'done'>('show');
+  const { profile, docPrefs, saveDocument, setDocumentStatus, documents, refresh } = useLocalData();
+  const [savedDocId, setSavedDocId] = useState<string | null>(null);
+  const [convertingFromId, setConvertingFromId] = useState<string | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [recoverableDraft, setRecoverableDraft] = useState<DraftRecord | null>(null);
+  const [noticeSeen, setNoticeSeen] = useState(true);
+  const autosaveRev = React.useRef(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Show Toast
@@ -99,6 +126,13 @@ export default function BillCraftApp() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
+  }, []);
+
+  // Register offline service worker (static export lives under /billcraft/)
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/billcraft/sw.js').catch(() => undefined);
+    }
   }, []);
 
   // Unsaved Session Warning (beforeunload)
@@ -192,9 +226,147 @@ export default function BillCraftApp() {
     const blank = createEmptyDocument(document.type, settings.defaultCurrency);
     blank.template = document.template;
     blank.colorTheme = document.colorTheme;
+    blank.watermark = document.watermark;
+    blank.density = document.density;
     setDocument(blank);
+    setSavedDocId(null);
+    setConvertingFromId(null);
     setHasStartedEditing(false);
+    void clearDraft();
+    setAutosaveStatus('idle');
     showToast('Document cleared');
+  };
+
+  // ---------- Draft autosave (Feature 6) ----------
+  useEffect(() => {
+    if (!hasStartedEditing) return;
+    setAutosaveStatus('saving');
+    const rev = ++autosaveRev.current;
+    const timer = setTimeout(async () => {
+      try {
+        await saveDraft({ revision: rev, savedAt: new Date().toISOString(), document, hasStartedEditing });
+        if (autosaveRev.current === rev) setAutosaveStatus('saved'); // only after the write succeeded
+      } catch {
+        if (autosaveRev.current === rev) setAutosaveStatus('error'); // never claim saved on failure
+      }
+    }, 900); // debounce frequent edits
+    return () => clearTimeout(timer);
+  }, [document, hasStartedEditing]);
+
+  // ---------- Draft recovery (offer restore after refresh / reopen) ----------
+  useEffect(() => {
+    void getDraft().then((draft) => {
+      if (draft && draft.hasStartedEditing) setRecoverableDraft(draft);
+    });
+    try {
+      setNoticeSeen(localStorage.getItem('bc-privacy-notice-seen') === '1');
+    } catch { /* private mode */ }
+  }, []);
+
+  const dismissNotice = () => {
+    setNoticeSeen(true);
+    try { localStorage.setItem('bc-privacy-notice-seen', '1'); } catch { /* ignore */ }
+  };
+
+  const restoreDraft = () => {
+    if (!recoverableDraft) return;
+    setDocument(recoverableDraft.document);
+    setHasStartedEditing(true);
+    setActiveTab('editor');
+    setRecoverableDraft(null);
+    showToast('Draft restored — continue where you left off');
+  };
+
+  const discardDraft = () => {
+    void clearDraft();
+    setRecoverableDraft(null);
+    showToast('Draft discarded');
+  };
+
+  // ---------- Save to History (Feature 4) ----------
+  const handleSaveToHistory = async () => {
+    const calc = calculateDocument(document);
+    const hasContent =
+      (document.customer.company || document.customer.name).trim() !== '' ||
+      (document.business.name || '').trim() !== '';
+    if (!hasContent || document.items.length === 0) {
+      showToast('Add client or business details and at least one item before saving');
+      return;
+    }
+    setSaveBusy(true);
+    try {
+      const id = savedDocId || crypto.randomUUID();
+      const existing = savedDocId ? documents.find((d) => d.id === savedDocId) : undefined;
+      const record = {
+        id,
+        type: document.type,
+        documentNumber: document.meta.documentNumber,
+        document,
+        calc,
+        status: (existing?.status as SavedDocument['status']) ||
+          (document.type === 'invoice' ? 'unpaid' : document.type === 'receipt' ? 'issued' : 'issued'),
+        payments: existing?.payments || [],
+        clientId: existing?.clientId || null,
+        clientName: document.customer.company || document.customer.name || '',
+        issueDate: document.meta.date || new Date().toISOString().slice(0, 10),
+        dueDate: document.type === 'invoice' || document.type === 'proforma' ? document.meta.dueDate : '',
+        totalMinor: Math.round(calc.grandTotal * 100),
+        amountPaidMinor: existing?.amountPaidMinor || 0,
+        convertedFromId: existing?.convertedFromId || convertingFromId,
+        convertedToId: existing?.convertedToId || null,
+      } as Omit<SavedDocument, 'createdAt' | 'updatedAt'>;
+      await saveDocument(record);
+      if (convertingFromId) {
+        // conversion completed: mark source quotation, keep it intact
+        const src = documents.find((d) => d.id === convertingFromId);
+        if (src) await setDocumentStatus(src.id, 'converted');
+        setConvertingFromId(null);
+        showToast(`Saved as ${record.documentNumber} — original quotation kept as Converted`);
+      } else {
+        showToast(savedDocId ? `Updated ${record.documentNumber}` : `Saved to History: ${record.documentNumber}`);
+      }
+      setSavedDocId(id);
+      await refresh();
+    } catch (err) {
+      showToast(`Save failed: ${err instanceof Error ? err.message : 'storage error'}`);
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  // ---------- History actions ----------
+  const handleOpenSavedDoc = async (saved: SavedDocument) => {
+    if (recoverableDraft && !window.confirm('You have an unsaved draft. Opening this document will replace it — continue?')) return;
+    setDocument(saved.document);
+    setSavedDocId(saved.id);
+    setConvertingFromId(null);
+    setHasStartedEditing(true);
+    void clearDraft();
+    setActiveTab('editor');
+    showToast(`Opened ${saved.documentNumber}`);
+  };
+
+  const handleDuplicateSavedDoc = async (saved: SavedDocument) => {
+    const copy = { ...saved.document, id: crypto.randomUUID() as unknown as string };
+    copy.meta.documentNumber = await nextDocumentNumber(copy.type);
+    setDocument(copy);
+    setSavedDocId(null);
+    setConvertingFromId(null);
+    setHasStartedEditing(true);
+    setActiveTab('editor');
+    showToast(`Duplicated as new draft ${copy.meta.documentNumber} — independent copy`);
+  };
+
+  const handleConvertSavedDoc = async (saved: SavedDocument) => {
+    const converted = convertDocModel(saved.document, 'invoice');
+    converted.meta.documentNumber = await nextDocumentNumber('invoice');
+    converted.meta.date = new Date().toISOString().slice(0, 10);
+    setDocument(converted);
+    setSavedDocId(null);
+    setConvertingFromId(saved.id);
+    setHasStartedEditing(true);
+    setActiveTab('editor');
+    showToast('Converted to invoice draft — Save to History when ready (original is untouched)');
   };
 
   // Command Palette Action Dispatcher
@@ -268,6 +440,28 @@ export default function BillCraftApp() {
       {/* PWA In-App Install Banner */}
       <PWAInstallBanner />
 
+      {/* Draft recovery banner (Feature 6) */}
+      {recoverableDraft && (
+        <div className="fixed top-16 inset-x-2 z-[65] rounded-xl border border-[#593C8F] bg-[#F6F2FA] dark:bg-[#241D31] dark:border-[#593C8F]/50 p-2.5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-200" data-testid="draft-recovery">
+          <div className="row sp" style={{ gap: 8 }}>
+            <Undo2 className="w-4 h-4 text-[#593C8F] dark:text-[#A8D5BA] shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[10.5px] font-bold text-[#17151F] dark:text-[#F8F5FC]">Unsaved draft found ({new Date(recoverableDraft.savedAt).toLocaleString()})</div>
+              <div className="text-[9px] text-[#6D6879] dark:text-[#A39BB0]">Recover it or discard — saved documents are in History.</div>
+            </div>
+            <button type="button" onClick={discardDraft} className="p-1 rounded-lg hover:bg-[#593C8F]/10" aria-label="Discard draft"><X className="w-3.5 h-3.5 text-[#6D6879]" /></button>
+            <button type="button" onClick={restoreDraft} className="btn shrink-0" style={{ fontSize: 10 }}>Restore draft</button>
+          </div>
+        </div>
+      )}
+
+      {/* First-use privacy notice (Feature 7) */}
+      {!noticeSeen && (activeTab === 'home' || activeTab === 'editor') && (
+        <div className="max-w-[420px] mx-auto px-2 pt-2">
+          <PrivacyNoticeCard onExportBackup={() => setActiveTab('settings')} dismissible onDismiss={dismissNotice} />
+        </div>
+      )}
+
       {/* Global Header */}
       <Header
         activeTab={activeTab}
@@ -291,17 +485,47 @@ export default function BillCraftApp() {
           )}
 
           {activeTab === 'home' && (
-            <HomeView
-              onCreateDocument={handleCreateDocument}
-              onNavigateToCreate={() => setActiveTab('create')}
-              onOpenTemplates={() => setActiveTab('templates')}
-              onOpenTools={() => setActiveTab('tools')}
-              onOpenTool={(toolId) => {
-                setSelectedToolId(toolId as ToolId);
-                setActiveTab('tools');
-              }}
-              onLoadDemo={handleLoadDemo}
-              onViewWelcome={() => setActiveTab('welcome')}
+            <div className="space-y-3.5">
+              <HomeView
+                onCreateDocument={handleCreateDocument}
+                onNavigateToCreate={() => setActiveTab('create')}
+                onOpenTemplates={() => setActiveTab('templates')}
+                onOpenTools={() => setActiveTab('tools')}
+                onOpenTool={(toolId) => {
+                  setSelectedToolId(toolId as ToolId);
+                  setActiveTab('tools');
+                }}
+                onLoadDemo={handleLoadDemo}
+                onViewWelcome={() => setActiveTab('welcome')}
+              />
+              {/* Phase 1: real business dashboard + local-data shortcuts */}
+              <DashboardSection
+                onOpenHistory={() => setActiveTab('history')}
+                onOpenDocument={(saved) => void handleOpenSavedDoc(saved)}
+                onCreateDocument={(t) => void handleCreateDocument(t)}
+              />
+              <div className="max-w-[420px] mx-auto grid grid-cols-3 gap-2" data-testid="data-nav">
+                <button type="button" onClick={() => setActiveTab('clients')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>Clients</button>
+                <button type="button" onClick={() => setActiveTab('products')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>Catalogue</button>
+                <button type="button" onClick={() => setActiveTab('history')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>History</button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'clients' && (
+            <ClientsView onShowToast={showToast} />
+          )}
+
+          {activeTab === 'products' && (
+            <ProductsView onShowToast={showToast} />
+          )}
+
+          {activeTab === 'history' && (
+            <HistoryView
+              onOpenDocument={(saved) => void handleOpenSavedDoc(saved)}
+              onDuplicateDocument={(saved) => void handleDuplicateSavedDoc(saved)}
+              onConvertDocument={(saved) => void handleConvertSavedDoc(saved)}
+              onShowToast={showToast}
             />
           )}
 
@@ -322,6 +546,9 @@ export default function BillCraftApp() {
               onResetDocument={handleResetDocument}
               onShowToast={showToast}
               onBackToHome={() => setActiveTab('home')}
+              onSaveToHistory={() => void handleSaveToHistory()}
+              saveBusy={saveBusy}
+              autosaveStatus={autosaveStatus}
               onOpenPreview={() => setActiveTab('preview')}
             />
           )}

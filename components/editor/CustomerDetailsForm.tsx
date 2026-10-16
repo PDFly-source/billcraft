@@ -2,16 +2,43 @@
 
 import React from 'react';
 import { CustomerDetails } from '@/types/document';
-import { User, Building, MapPin, Phone, Mail } from 'lucide-react';
+import { User, Building, MapPin, Phone, Mail, BookUser, BookmarkPlus } from 'lucide-react';
 
 interface CustomerDetailsFormProps {
   customer: CustomerDetails;
   onChange: (updated: Partial<CustomerDetails>) => void;
+  onPickClient?: () => void;
+  onSaveClient?: () => void;
+  clientCount?: number;
 }
 
-export const CustomerDetailsForm: React.FC<CustomerDetailsFormProps> = ({ customer, onChange }) => {
+export const CustomerDetailsForm: React.FC<CustomerDetailsFormProps> = ({ customer, onChange, onPickClient, onSaveClient, clientCount = 0 }) => {
   return (
     <div className="space-y-4">
+      {(onPickClient || onSaveClient) && (
+        <div className="flex flex-wrap gap-2">
+          {onPickClient && (
+            <button
+              type="button"
+              onClick={onPickClient}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#593C8F]/30 dark:border-[#593C8F]/50 text-[11px] font-bold text-[#593C8F] dark:text-[#A8D5BA] hover:bg-[#593C8F]/10 transition"
+            >
+              <BookUser className="w-3.5 h-3.5" />
+              {clientCount > 0 ? 'Load from Clients' : 'Load from Clients (none saved yet)'}
+            </button>
+          )}
+          {onSaveClient && (customer.name.trim() || customer.company.trim()) && (
+            <button
+              type="button"
+              onClick={onSaveClient}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#6FBF9E]/40 text-[11px] font-bold text-[#2E7D5B] dark:text-[#6FBF9E] hover:bg-[#6FBF9E]/10 transition"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5" />
+              Save as Client
+            </button>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">

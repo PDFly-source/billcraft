@@ -159,6 +159,16 @@ export interface DocumentCalculations {
   amountInWords: string;
 }
 
+export interface WatermarkSettings {
+  enabled: boolean;
+  text: string;
+  opacity: number;   // 0.04 .. 0.20 (safe readability bounds)
+  position: 'center' | 'tl' | 'tr' | 'bl' | 'br';
+  rotation: number;  // -45 .. 45 degrees
+}
+
+export type DocDensity = 'compact' | 'normal' | 'spacious';
+
 export interface DocumentModel {
   id: string;
   type: DocumentType;
@@ -180,6 +190,8 @@ export interface DocumentModel {
   paperSize: 'a4' | 'a5' | 'letter';
   orientation: 'portrait' | 'landscape';
   showBillCraftBranding: boolean;
+  watermark?: WatermarkSettings; // optional: older drafts have none
+  density?: DocDensity;          // optional: page margin/typography density
 }
 
 export interface AppSettings {

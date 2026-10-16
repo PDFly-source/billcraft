@@ -8,7 +8,8 @@ import { BillCraftIcon } from '@/components/ui/BillCraftIcons';
 import { BillCraftLogo } from '@/components/ui/BillCraftLogo';
 import { DocumentRenderer } from '@/components/templates/DocumentRenderer';
 import { downloadPDF } from '@/lib/pdf-generator';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MessageCircle } from 'lucide-react';
+import { ShareModal } from '@/components/data/ShareModal';
 
 interface LivePreviewViewProps {
   document: DocumentModel;
@@ -44,6 +45,8 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
       onShowToast('Document summary copied to clipboard');
     }
   };
+
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   const handlePrint = () => {
     window.print();
@@ -84,6 +87,15 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
             aria-label="Share"
           >
             <BillCraftIcon name="share" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsShareOpen(true)}
+            className="text-[#17151F] dark:text-[#F8F5FC] hover:text-[#25D366] transition cursor-pointer p-1"
+            title="Share via WhatsApp"
+            aria-label="Share via WhatsApp"
+          >
+            <MessageCircle className="w-4 h-4" />
           </button>
           <button
             type="button"
@@ -284,10 +296,18 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
         </div>
       )}
 
+      <ShareModal
+        open={isShareOpen}
+        doc={doc}
+        calc={calcs}
+        onClose={() => setIsShareOpen(false)}
+        onShowToast={onShowToast}
+      />
+
       {/* Hidden Sheet for PDF rendering */}
       <div className="hidden">
         <DocumentRenderer document={doc} />
       </div>
     </div>
   );
-};
+}

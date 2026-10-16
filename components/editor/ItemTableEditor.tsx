@@ -12,6 +12,7 @@ import {
   ChevronUp,
   ChevronDown,
   Calculator,
+  PackageSearch,
 } from 'lucide-react';
 
 interface ItemTableEditorProps {
@@ -19,6 +20,8 @@ interface ItemTableEditorProps {
   currency: CurrencyCode;
   showGST: boolean;
   onChange: (updatedItems: DocumentItem[]) => void;
+  onPickProduct?: (index: number) => void;
+  productCount?: number;
 }
 
 const UNIT_OPTIONS: { value: UnitType; label: string }[] = [
@@ -41,6 +44,8 @@ export const ItemTableEditor: React.FC<ItemTableEditorProps> = ({
   currency,
   showGST,
   onChange,
+  onPickProduct,
+  productCount = 0,
 }) => {
   const addItem = () => {
     const newItem: DocumentItem = {
@@ -144,6 +149,16 @@ export const ItemTableEditor: React.FC<ItemTableEditorProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {onPickProduct && (
+                    <button
+                      type="button"
+                      onClick={() => onPickProduct(idx)}
+                      title={productCount > 0 ? 'Autofill from catalogue' : 'Open catalogue (empty)'}
+                      className="p-1 rounded text-slate-400 hover:text-[#593C8F] dark:hover:text-[#A8D5BA]"
+                    >
+                      <PackageSearch className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => moveUp(idx)}

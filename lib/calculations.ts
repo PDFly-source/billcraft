@@ -2,6 +2,38 @@ import { DocumentItem, DocumentModel, DocumentCalculations } from '@/types/docum
 import { safeEvaluateExpression } from './safe-eval';
 import { amountToWords } from './currency';
 
+/**
+ * Financial engine — deterministic, integer-minor-unit (paise) arithmetic.
+ *
+ * Every rupee value is converted to an integer number of paise before any
+ * addition, subtraction or percentage is applied, so 0.1 + 0.2 never becomes
+ * 0.30000000000000004 and mixed tax rates can never drift from their totals.
+ * The only float operations allowed are the single rounding at the point a
+ * quantity × rate is computed, and percentage divisions which are rounded
+ * back to whole paise immediately.
+ */
+
+/** rupees -> paise, rounded once */
+export function toMinor(amount: number): number {
+  if (!isFinite(amount)) return 0;
+  return Math.round(amount * 100);
+}
+
+/** paise -> rupees */
+export function fromMinor(minor: number): number {
+  return minor / 100;
+}
+
+export function roundTo2(num: number): number {
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+
+/** percentage of an integer amount, rounded to whole paise */
+function pctOf(minor: number, pct: number): number {
+  if (minor <= 0 || pct <= 0) return 0;
+  return Math.round((minor * pct) / 100);
+}
+
 export function calculateItemRow(item: DocumentItem): {
   quantity: number;
   rate: number;
@@ -13,127 +45,123 @@ export function calculateItemRow(item: DocumentItem): {
 } {
   const qty = safeEvaluateExpression(item.quantity);
   const rate = safeEvaluateExpression(item.rate);
-  const subtotal = Math.max(0, qty * rate);
+  // the ONE place float rounding happens: line amount to exact paise
+  const subtotalMinor = toMinor(Math.max(0, qty) * Math.max(0, rate));
 
-  let discountAmount = 0;
+  let discountMinor = 0;
+  const dv = Math.max(0, Number(item.discountValue) || 0);
   if (item.discountType === 'percent') {
-    discountAmount = (subtotal * Math.max(0, item.discountValue || 0)) / 100;
+    discountMinor = pctOf(subtotalMinor, dv);
   } else {
-    discountAmount = Math.min(subtotal, Math.max(0, item.discountValue || 0));
+    discountMinor = Math.min(subtotalMinor, toMinor(dv));
   }
 
-  const taxable = Math.max(0, subtotal - discountAmount);
-  const taxRate = Math.max(0, item.taxRate || 0);
-  const taxAmount = (taxable * taxRate) / 100;
-  const total = taxable + taxAmount;
+  const taxableMinor = Math.max(0, subtotalMinor - discountMinor);
+  const taxRate = Math.max(0, Number(item.taxRate) || 0);
+  const taxMinor = pctOf(taxableMinor, taxRate);
+  const totalMinor = taxableMinor + taxMinor;
 
   return {
     quantity: qty,
     rate,
-    subtotal: roundTo2(subtotal),
-    discountAmount: roundTo2(discountAmount),
-    taxable: roundTo2(taxable),
-    taxAmount: roundTo2(taxAmount),
-    total: roundTo2(total),
+    subtotal: fromMinor(subtotalMinor),
+    discountAmount: fromMinor(discountMinor),
+    taxable: fromMinor(taxableMinor),
+    taxAmount: fromMinor(taxMinor),
+    total: fromMinor(totalMinor),
   };
 }
 
 export function calculateDocument(doc: DocumentModel): DocumentCalculations {
-  let subtotal = 0;
-  let itemDiscountsTotal = 0;
-  let itemTaxSum = 0;
-
-  doc.items.forEach((item) => {
+  const rows = doc.items.map((item) => {
     const row = calculateItemRow(item);
-    subtotal += row.subtotal;
-    itemDiscountsTotal += row.discountAmount;
-    itemTaxSum += row.taxAmount;
+    return {
+      subtotalMinor: toMinor(row.subtotal),
+      discountMinor: toMinor(row.discountAmount),
+      taxableMinor: toMinor(row.taxable),
+      taxRate: Math.max(0, Number(item.taxRate) || 0),
+    };
   });
 
-  subtotal = roundTo2(subtotal);
-  itemDiscountsTotal = roundTo2(itemDiscountsTotal);
+  const subtotalMinor = rows.reduce((s, r) => s + r.subtotalMinor, 0);
+  const itemDiscountsMinor = rows.reduce((s, r) => s + r.discountMinor, 0);
+  const afterItemDiscountsMinor = Math.max(0, subtotalMinor - itemDiscountsMinor);
 
-  // Overall Document Discount
-  let overallDiscountTotal = 0;
-  const afterItemDiscounts = Math.max(0, subtotal - itemDiscountsTotal);
-
-  if (doc.discount && doc.discount.type !== 'none' && doc.discount.value > 0) {
+  // ---- overall (document-level) discount, rounded ONCE to whole paise ----
+  let overallDiscountMinor = 0;
+  if (doc.discount && doc.discount.type !== 'none' && Number(doc.discount.value) > 0) {
     if (doc.discount.type === 'percent') {
-      overallDiscountTotal = (afterItemDiscounts * doc.discount.value) / 100;
+      overallDiscountMinor = pctOf(afterItemDiscountsMinor, Math.max(0, Number(doc.discount.value)));
     } else {
-      overallDiscountTotal = Math.min(afterItemDiscounts, doc.discount.value);
+      overallDiscountMinor = Math.min(afterItemDiscountsMinor, toMinor(Math.max(0, Number(doc.discount.value))));
     }
   }
-  overallDiscountTotal = roundTo2(overallDiscountTotal);
-  const totalDiscount = roundTo2(itemDiscountsTotal + overallDiscountTotal);
+  const totalDiscountMinor = itemDiscountsMinor + overallDiscountMinor;
+  const taxableAmountMinor = Math.max(0, afterItemDiscountsMinor - overallDiscountMinor);
 
-  const taxableAmount = Math.max(0, roundTo2(subtotal - totalDiscount));
+  // ---- tax: per item (supports MIXED rates), pro-rated for the overall discount ----
+  let cgstMinor = 0;
+  let sgstMinor = 0;
+  let igstMinor = 0;
+  let customTaxMinor = 0;
 
-  let cgst = 0;
-  let sgst = 0;
-  let igst = 0;
-  let customTax = 0;
-  let totalTax = 0;
+  const proportion =
+    afterItemDiscountsMinor > 0 ? taxableAmountMinor / afterItemDiscountsMinor : 0;
 
   if (doc.tax.mode === 'gst') {
-    // If items have individual tax rates, compute weighted or check default rate
-    // If items have explicit taxes set on items, use them adjusted for overall discount, or calculate from taxableAmount
-    const effectiveTaxRate = doc.items.length > 0
-      ? (doc.items.reduce((acc, i) => acc + (Number(i.taxRate) || 0), 0) / doc.items.length)
-      : 18;
-
-    const baseTax = roundTo2((taxableAmount * effectiveTaxRate) / 100);
-
-    if (doc.tax.gstType === 'cgst_sgst') {
-      cgst = roundTo2(baseTax / 2);
-      sgst = roundTo2(baseTax / 2);
-      totalTax = roundTo2(cgst + sgst);
-    } else {
-      igst = baseTax;
-      totalTax = igst;
+    for (const r of rows) {
+      if (r.taxRate <= 0) continue;
+      const effectiveTaxableMinor = Math.round(r.taxableMinor * proportion);
+      const taxMinor = pctOf(effectiveTaxableMinor, r.taxRate);
+      if (doc.tax.gstType === 'cgst_sgst') {
+        const half = Math.round(taxMinor / 2);
+        cgstMinor += half;
+        sgstMinor += taxMinor - half; // halves always sum to the exact item tax
+      } else {
+        igstMinor += taxMinor;
+      }
     }
   } else if (doc.tax.mode === 'custom') {
-    const rate = Math.max(0, doc.tax.customTaxRate || 0);
-    customTax = roundTo2((taxableAmount * rate) / 100);
-    totalTax = customTax;
-  } else {
-    // TaxMode 'none'
-    totalTax = 0;
+    const rate = Math.max(0, Number(doc.tax.customTaxRate) || 0);
+    if (doc.tax.customTaxInclusive && rate > 0) {
+      // tax-inclusive custom pricing: taxableAmountMinor is the GROSS;
+      // extract the tax portion exactly: gross * r / (100 + r)
+      customTaxMinor = Math.round((taxableAmountMinor * rate) / (100 + rate));
+    } else {
+      customTaxMinor = pctOf(taxableAmountMinor, rate);
+    }
   }
 
-  const rawTotal = roundTo2(taxableAmount + totalTax);
+  const totalTaxMinor = cgstMinor + sgstMinor + igstMinor + customTaxMinor;
 
-  let roundOff = 0;
-  let grandTotal = rawTotal;
+  const rawTotalMinor = taxableAmountMinor + totalTaxMinor;
 
+  let roundOffMinor = 0;
+  let grandTotalMinor = rawTotalMinor;
   if (doc.autoRoundOff) {
-    const rounded = Math.round(rawTotal);
-    roundOff = roundTo2(rounded - rawTotal);
-    grandTotal = rounded;
+    const roundedMinor = Math.round(rawTotalMinor / 100) * 100; // nearest rupee
+    roundOffMinor = roundedMinor - rawTotalMinor;
+    grandTotalMinor = roundedMinor;
   }
+  grandTotalMinor = Math.max(0, grandTotalMinor);
 
-  grandTotal = Math.max(0, roundTo2(grandTotal));
-
+  const grandTotal = fromMinor(grandTotalMinor);
   const words = amountToWords(grandTotal, doc.currency);
 
   return {
-    subtotal,
-    itemDiscountsTotal,
-    overallDiscountTotal,
-    totalDiscount,
-    taxableAmount,
-    cgst,
-    sgst,
-    igst,
-    customTax,
-    totalTax,
-    rawTotal,
-    roundOff,
+    subtotal: fromMinor(subtotalMinor),
+    itemDiscountsTotal: fromMinor(itemDiscountsMinor),
+    overallDiscountTotal: fromMinor(overallDiscountMinor),
+    totalDiscount: fromMinor(totalDiscountMinor),
+    taxableAmount: fromMinor(taxableAmountMinor),
+    cgst: fromMinor(cgstMinor),
+    sgst: fromMinor(sgstMinor),
+    igst: fromMinor(igstMinor),
+    customTax: fromMinor(customTaxMinor),
+    totalTax: fromMinor(totalTaxMinor),
+    rawTotal: fromMinor(rawTotalMinor),
+    roundOff: fromMinor(roundOffMinor),
     grandTotal,
     amountInWords: words,
   };
-}
-
-export function roundTo2(num: number): number {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
 }

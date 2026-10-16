@@ -9,6 +9,9 @@ import {
   DocumentItem,
 } from '@/types/document';
 import { performDocumentHealthCheck } from '@/lib/validation';
+import { useLocalData } from '@/hooks/useLocalData';
+import { ClientPickerModal, ProductPickerModal } from '@/components/data/Pickers';
+import { findDuplicateClient, getClient, getProduct } from '@/lib/db/repository';
 import { downloadPDF } from '@/lib/pdf-generator';
 import { convertDocument, generateDocNumber } from '@/lib/sample-data';
 import { calculateDocument, calculateItemRow } from '@/lib/calculations';
@@ -35,6 +38,9 @@ import {
   RotateCcw,
   ShieldCheck,
   Palette,
+  Bookmark,
+  Save,
+  Loader2 as SaveSpinner,
 } from 'lucide-react';
 
 interface DocumentEditorProps {
@@ -44,6 +50,9 @@ interface DocumentEditorProps {
   onShowToast: (message: string) => void;
   onBackToHome?: () => void;
   onOpenPreview?: () => void;
+  onSaveToHistory?: () => void;
+  saveBusy?: boolean;
+  autosaveStatus?: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
@@ -53,10 +62,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onShowToast,
   onBackToHome,
   onOpenPreview,
+  onSaveToHistory,
+  saveBusy = false,
+  autosaveStatus = 'idle',
 }) => {
   const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false);
   const [isHealthCheckOpen, setIsHealthCheckOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
+  const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
+  const [productRowIndex, setProductRowIndex] = useState(0);
+  const { clients, products, saveClient } = useLocalData();
   const [isExporting, setIsExporting] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showConvertMenu, setShowConvertMenu] = useState(false);
@@ -73,6 +89,65 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
   const calcs = calculateDocument(doc);
   const healthCheck = performDocumentHealthCheck(doc);
+
+  // Load a saved client INTO THIS DOCUMENT ONLY (the saved profile is untouched)
+  const handlePickClient = async (clientId: string) => {
+    const c = await getClient(clientId);
+    if (!c) return;
+    onUpdateDocument({
+      ...doc,
+      customer: {
+        ...doc.customer,
+        name: c.contactPerson || c.name,
+        company: c.name,
+        address: c.billingAddress,
+        phone: c.phone,
+        email: c.email,
+        gstin: c.gstin,
+        state: c.state,
+        stateCode: c.stateCode,
+        placeOfSupply: c.state || doc.customer.placeOfSupply,
+      },
+    });
+    onShowToast(`Loaded "${c.name}" — editing here never changes the saved client`);
+  };
+
+  // Save the current customer details as a reusable client (with duplicate guard)
+  const handleSaveClientFromForm = () => {
+    const name = (doc.customer.company || doc.customer.name || '').trim();
+    if (!name) {
+      onShowToast('Enter a client name first');
+      return;
+    }
+    const dup = findDuplicateClient(clients, { name, gstin: doc.customer.gstin });
+    if (dup && !window.confirm(`"${dup.name}" already exists in your clients.\n\nSave anyway as a separate client?`)) return;
+    void saveClient({
+      name,
+      contactPerson: doc.customer.name && doc.customer.name !== name ? doc.customer.name : '',
+      phone: doc.customer.phone,
+      email: doc.customer.email,
+      billingAddress: doc.customer.address,
+      gstin: doc.customer.gstin,
+      state: doc.customer.state,
+      stateCode: doc.customer.stateCode,
+    }).then(() => onShowToast(`"${name}" saved to Clients`));
+  };
+
+  // Autofill a row from the catalogue; per-document overrides stay free
+  const handlePickProduct = async (productId: string) => {
+    const p = await getProduct(productId);
+    if (!p) return;
+    const idx = productRowIndex;
+    const updated = doc.items.map((it, i) =>
+      i === idx
+        ? { ...it, name: p.name, description: p.description || it.description, hsn: p.hsn || it.hsn,
+            unit: (p.unit || it.unit) as typeof it.unit, rate: p.price,
+            taxRate: typeof p.taxRate === 'number' ? p.taxRate : it.taxRate }
+        : it,
+    );
+    onUpdateDocument({ ...doc, items: updated });
+    onShowToast(`"${p.name}" added — you can override price/tax for this document only`);
+  };
 
   // Focus a specific field (invoked from health check modal)
   const handleFocusField = (fieldTarget: string) => {
@@ -204,6 +279,27 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <div
                   className="absolute right-0 top-8 w-48 rounded-xl bg-white dark:bg-[#1B1820] border border-[#E7E0EE] dark:border-[#302B38] shadow-xl z-50 p-1.5 space-y-1 text-xs"
                 >
+                  {onSaveToHistory && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSaveToHistory();
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-[#FAF6EE] dark:hover:bg-[#281E36] text-[#17151F] dark:text-[#F8F5FC] flex items-center gap-1.5"
+                      >
+                        {saveBusy ? <SaveSpinner className="w-3.5 h-3.5 animate-spin text-[#593C8F]" /> : <Bookmark className="w-3.5 h-3.5 text-[#593C8F]" />}
+                        {saveBusy ? 'Saving…' : 'Save to History'}
+                      </button>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] text-[#6D6879]">
+                        {autosaveStatus === 'saving' && (<><SaveSpinner className="w-3 h-3 animate-spin" /> Draft saving…</>)}
+                        {autosaveStatus === 'saved' && (<><Save className="w-3 h-3 text-emerald-600" /> Draft saved locally</>)}
+                        {autosaveStatus === 'error' && <span className="text-red-500">Draft save failed — storage full?</span>}
+                      </div>
+                      <div className="border-t border-[#E7E0EE] dark:border-[#302B38] my-1" />
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -376,6 +472,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             {isEditingCustomer && (
               <div className="card p-3 mt-1.5 shadow-sm border-[#593C8F]/30 animate-in fade-in duration-150">
                 <CustomerDetailsForm
+                  onPickClient={() => setIsClientPickerOpen(true)}
+                  onSaveClient={handleSaveClientFromForm}
+                  clientCount={clients.length}
                   customer={doc.customer}
                   onChange={(upd) => onUpdateDocument({ ...doc, customer: { ...doc.customer, ...upd } })}
                 />
@@ -443,6 +542,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   currency={doc.currency}
                   showGST={doc.tax.mode === 'gst'}
                   onChange={(nextItems) => onUpdateDocument({ ...doc, items: nextItems })}
+                  onPickProduct={(idx) => { setProductRowIndex(idx); setIsProductPickerOpen(true); }}
+                  productCount={products.length}
                 />
               </div>
             ) : (
@@ -710,6 +811,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Local data pickers (document-scoped; saved records are never modified) */}
+      <ClientPickerModal
+        open={isClientPickerOpen}
+        onClose={() => setIsClientPickerOpen(false)}
+        onPick={(id) => void handlePickClient(id)}
+        onManage={() => { if (onBackToHome) onBackToHome(); }}
+      />
+      <ProductPickerModal
+        open={isProductPickerOpen}
+        onClose={() => setIsProductPickerOpen(false)}
+        onPick={(id) => void handlePickProduct(id)}
+        onManage={() => {}}
+      />
 
       {/* Modals */}
       <FullscreenPreviewModal

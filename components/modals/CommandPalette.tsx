@@ -18,6 +18,9 @@ import {
   Eye,
   ShieldCheck,
   Wrench,
+  User,
+  Package,
+  History,
 } from 'lucide-react';
 import { DocumentType } from '@/types/document';
 
@@ -152,6 +155,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Tools',
       icon: Wrench,
       action: () => onAction('navigate', 'tools'),
+    },
+    {
+      id: 'clients',
+      title: 'Open Saved Clients',
+      category: 'Your Data',
+      icon: User,
+      action: () => onAction('navigate', 'clients'),
+    },
+    {
+      id: 'products',
+      title: 'Open Product Catalogue',
+      category: 'Your Data',
+      icon: Package,
+      action: () => onAction('navigate', 'products'),
+    },
+    {
+      id: 'history',
+      title: 'Open Document History & Payments',
+      category: 'Your Data',
+      icon: History,
+      action: () => onAction('navigate', 'history'),
     },
     {
       id: 'toggle-theme',

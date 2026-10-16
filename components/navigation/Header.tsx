@@ -23,7 +23,10 @@ export type NavTab =
   | 'settings'
   | 'privacy'
   | 'about'
-  | 'welcome';
+  | 'welcome'
+  | 'clients'
+  | 'products'
+  | 'history';
 
 interface HeaderProps {
   activeTab: NavTab;

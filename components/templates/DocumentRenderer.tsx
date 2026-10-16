@@ -67,11 +67,18 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
           : doc.paperSize === 'letter'
           ? 'max-w-[216mm] min-h-[279mm]'
           : 'max-w-[210mm] min-h-[297mm]'
-      } p-6 sm:p-10 shadow-sm border border-[#E7E0EE] transition-all ${className}`}
+      } ${
+        doc.density === 'compact' ? 'p-4 sm:p-7' : doc.density === 'spacious' ? 'p-8 sm:p-12' : 'p-6 sm:p-10'
+      } shadow-sm border border-[#E7E0EE] transition-all ${className}`}
       style={{
         boxSizing: 'border-box',
       }}
     >
+      {/* Optional watermark (clamped to safe readability bounds; never blocks text) */}
+      {doc.watermark?.enabled && doc.watermark.text.trim() ? (
+        <WatermarkOverlay text={doc.watermark.text} opacity={doc.watermark.opacity} position={doc.watermark.position} rotation={doc.watermark.rotation} />
+      ) : null}
+
       {/* Reference Top Gradient Stripe */}
       <div
         className="absolute top-0 left-0 right-0 h-[5px]"
@@ -1141,3 +1148,49 @@ function renderSignatureBlock(doc: DocumentModel) {
     </div>
   );
 }
+
+
+/* ------------------------- watermark overlay ------------------------- */
+
+const WM_POS: Record<string, string> = {
+  center: 'inset-0 flex items-center justify-center',
+  tl: 'top-[6%] left-[4%]',
+  tr: 'top-[6%] right-[4%]',
+  bl: 'bottom-[6%] left-[4%]',
+  br: 'bottom-[6%] right-[4%]',
+};
+
+const WatermarkOverlay: React.FC<{
+  text: string;
+  opacity: number;
+  position: 'center' | 'tl' | 'tr' | 'bl' | 'br';
+  rotation: number;
+}> = ({ text, opacity, position, rotation }) => {
+  // clamp within safe limits so readability/contrast is preserved
+  const safeOpacity = Math.min(0.2, Math.max(0.04, Number(opacity) || 0.08));
+  const safeRotation = Math.min(45, Math.max(-45, Number(rotation) || 0));
+  const t = text.trim().slice(0, 40);
+  // size adapts so long names still fit the page
+  const fontSize = t.length <= 8 ? 96 : t.length <= 14 ? 72 : t.length <= 22 ? 54 : 42;
+  return (
+    <div
+      aria-hidden
+      className={`absolute pointer-events-none z-[1] ${WM_POS[position] || WM_POS.center}`}
+    >
+      <span
+        style={{
+          opacity: safeOpacity,
+          transform: `rotate(${safeRotation}deg)`,
+          fontSize: `${fontSize}px`,
+          fontWeight: 800,
+          letterSpacing: '0.04em',
+          whiteSpace: 'nowrap',
+          color: '#2C1760',
+          userSelect: 'none',
+        }}
+      >
+        {t}
+      </span>
+    </div>
+  );
+};
