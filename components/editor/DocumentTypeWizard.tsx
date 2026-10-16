@@ -61,7 +61,7 @@ export const DocumentTypeWizard: React.FC<DocumentTypeWizardProps> = ({
       {/* Brand Header */}
       <div className="row sp">
         <div className="row">
-          <BillCraftLogo variant="compact" width={56} />
+          <BillCraftLogo variant="lockup" size={40} />
         </div>
       </div>
 

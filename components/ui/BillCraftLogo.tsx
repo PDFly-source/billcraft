@@ -15,10 +15,15 @@ import Image from 'next/image';
  *   /assets/billcraft-logo-compact.png compact lockup: emblem + wordmark,
  *                                       no tagline (797 x 799, transparent bg)
  *   /assets/billcraft-emblem.png        emblem square only (580 x 580, white bg)
+ *   /assets/billcraft-emblem-transparent.png  emblem, transparent bg (580 x 580)
+ *   /assets/billcraft-wordmark.png     official "BillCraft" wordmark crop,
+ *                                      transparent bg (797 x 219)
  *
  * Variants:
- *   'full'    complete official artwork — welcome, about, brand/hero sections
- *   'compact' emblem + wordmark — header and space-limited branding rows
+ *   'full'    complete official artwork — welcome, about, splash, brand/hero
+ *   'lockup'  horizontal: official emblem + official wordmark + official
+ *            tagline beneath the wordmark — header, home, branding rows
+ *   'compact' vertical stacked lockup (emblem + wordmark, no tagline)
  *   'icon'    emblem only — favicon/PWA-sized and other square icon contexts
  *
  * The artwork uses the official light-on-white presentation. In dark mode the
@@ -29,9 +34,26 @@ const FULL_WIDTH = 797;
 const FULL_HEIGHT = 853;
 const COMPACT_WIDTH = 797;
 const COMPACT_HEIGHT = 799;
+const WORDMARK_WIDTH = 797;
+const WORDMARK_HEIGHT = 219;
+
+/** Official tagline rendered as crisp text at small scales, styled to match
+ *  the official artwork's tagline (spaced uppercase, grey, gold bullets). */
+const OfficialTagline: React.FC<{ fontSize: number; className?: string }> = ({
+  fontSize,
+  className = '',
+}) => (
+  <span
+    className={`whitespace-nowrap font-semibold uppercase select-none ${className}`}
+    style={{ fontSize, letterSpacing: '0.22em', color: '#5B5B6E', lineHeight: 1.1 }}
+  >
+    CREATE <span style={{ color: '#F6B837' }}>•</span> CALCULATE{' '}
+    <span style={{ color: '#F6B837' }}>•</span> SHARE
+  </span>
+);
 
 export interface BillCraftLogoProps {
-  variant?: 'full' | 'compact' | 'icon' | 'emblem' | 'responsive';
+  variant?: 'full' | 'lockup' | 'compact' | 'icon' | 'emblem' | 'responsive';
   /** Width in px for the full/compact lockups (height follows aspect ratio). */
   width?: number;
   /** Square icon size in px (icon variant only). */
@@ -79,8 +101,9 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
 
   // 'emblem' and 'responsive' kept as aliases so no call site silently loses
   // branding: both now resolve to the official artwork variants.
-  const resolved: 'full' | 'compact' | 'icon' =
+  const resolved: 'full' | 'lockup' | 'compact' | 'icon' =
     variant === 'full' ? 'full'
+    : variant === 'lockup' ? 'lockup'
     : variant === 'compact' || variant === 'responsive' ? 'compact'
     : 'icon';
 
@@ -142,6 +165,46 @@ export const BillCraftLogo: React.FC<BillCraftLogoProps> = ({
           priority={priority}
           onError={() => setFailed(true)}
         />
+      </div>
+    );
+  }
+
+  if (resolved === 'lockup') {
+    const emblemDim = size || width || 34;
+    // wordmark scales with the emblem, keeping official proportions
+    const wmH = Math.round(emblemDim * 0.72);
+    const wmW = Math.round((wmH * WORDMARK_WIDTH) / WORDMARK_HEIGHT);
+    const tagSize = Math.max(6, Math.round(wmH * 0.30));
+    return (
+      <div
+        className={`inline-flex items-center gap-[0.35em] shrink-0 rounded-lg ${surface} ${className}`}
+        style={style}
+      >
+        <Image
+          src={asset('/assets/billcraft-emblem-transparent.png')}
+          alt="BillCraft Emblem"
+          width={emblemDim}
+          height={emblemDim}
+          className="shrink-0 object-contain"
+          priority={priority}
+          onError={() => setFailed(true)}
+        />
+        {failed ? (
+          <LogoTextFallback withTagline className="text-[0.95rem]" />
+        ) : (
+          <span className="flex flex-col items-center leading-none gap-[0.14em]">
+            <Image
+              src={asset('/assets/billcraft-wordmark.png')}
+              alt="BillCraft"
+              width={wmW}
+              height={wmH}
+              className="object-contain"
+              priority={priority}
+              onError={() => setFailed(true)}
+            />
+            <OfficialTagline fontSize={tagSize} />
+          </span>
+        )}
       </div>
     );
   }

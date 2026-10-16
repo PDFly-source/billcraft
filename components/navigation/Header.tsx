@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => onNavigate('home')}
           className="flex items-center cursor-pointer select-none group"
         >
-          <BillCraftLogo variant="compact" width={52} priority />
+          <BillCraftLogo variant="lockup" size={34} priority />
         </div>
 
         {/* Center Navigation Links (Desktop: All 6 tabs in exact order) */}

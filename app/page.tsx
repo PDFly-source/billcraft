@@ -19,6 +19,7 @@ import { Footer } from '@/components/navigation/Footer';
 import { MobileTabBar } from '@/components/navigation/MobileTabBar';
 import { HomeView } from '@/components/home/HomeView';
 import { WelcomeView } from '@/components/home/WelcomeView';
+import { SplashScreen } from '@/components/ui/SplashScreen';
 import { DocumentTypeWizard } from '@/components/editor/DocumentTypeWizard';
 import { DocumentEditor } from '@/components/editor/DocumentEditor';
 import { LivePreviewView } from '@/components/preview/LivePreviewView';
@@ -53,6 +54,7 @@ export default function BillCraftApp() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [splashState, setSplashState] = useState<'show' | 'fade' | 'done'>('show');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Show Toast
@@ -87,6 +89,17 @@ export default function BillCraftApp() {
       setIsDarkMode(shouldBeDark);
     });
   }, [settings.theme]);
+
+  // Official brand splash: visible on cold launch / PWA launch / refresh,
+  // fades out and unmounts so it never blocks interaction.
+  useEffect(() => {
+    const t1 = setTimeout(() => setSplashState('fade'), 1100);
+    const t2 = setTimeout(() => setSplashState('done'), 1650);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
 
   // Unsaved Session Warning (beforeunload)
   useEffect(() => {
@@ -249,6 +262,9 @@ export default function BillCraftApp() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-main)] text-[var(--text-primary)]">
+      {/* Official In-App Splash (cold launch / PWA launch) */}
+      {splashState !== 'done' && <SplashScreen fading={splashState === 'fade'} />}
+
       {/* PWA In-App Install Banner */}
       <PWAInstallBanner />
 
