@@ -155,3 +155,74 @@ export const SORTERS: Record<string, (a: SavedDocument, b: SavedDocument) => num
   'number-desc': (a, b) => b.documentNumber.localeCompare(a.documentNumber),
   'number-asc': (a, b) => a.documentNumber.localeCompare(b.documentNumber),
 };
+
+// ===================== Phase 3: payment summary =====================
+// ONE shared source for editor badge, preview, PDF, payment history and
+// dashboard balance maths. All values are exact paise integers.
+
+export type DocPaymentLite = { id: string; date: string; amountMinor: number; method?: string; reference?: string };
+export type PaidStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
+
+export interface PaymentSummary {
+  paidMinor: number;
+  balanceMinor: number;
+  status: PaidStatus;
+  /** human label like '₹1,180.00 paid · ₹350.00 due' (formatted by caller) */
+  paymentCount: number;
+}
+
+/** Sum of recorded payments; malformed records contribute zero. */
+export function sumPaymentsMinor(payments: DocPaymentLite[] | undefined | null): number {
+  if (!Array.isArray(payments)) return 0;
+  let total = 0;
+  for (const p of payments) {
+    const m = Math.round(Number(p?.amountMinor));
+    if (isFinite(m) && m > 0) total += m;
+  }
+  return total;
+}
+
+/** Shared balance/status engine: total payable minus recorded payments. */
+export function paymentSummary(totalMinor: number, payments: DocPaymentLite[] | undefined | null): PaymentSummary {
+  const total = Math.max(0, Math.round(Number(totalMinor) || 0));
+  const paidMinor = sumPaymentsMinor(payments);
+  const balanceMinor = Math.max(0, total - paidMinor);
+  let status: PaidStatus = 'UNPAID';
+  if (paidMinor > 0 && balanceMinor <= 0) status = 'PAID';
+  else if (paidMinor > 0) status = 'PARTIAL';
+  return { paidMinor, balanceMinor, status, paymentCount: Array.isArray(payments) ? payments.length : 0 };
+}
+
+export interface AddPaymentValidation {
+  valid: boolean;
+  error?: string;
+  amountMinor?: number;
+}
+
+/** Validate a new payment against the document's payable total and the
+ *  already-recorded payments. Overpayments are rejected (they are not
+ *  represented anywhere in the app). */
+export function validateDocPayment(totalMinor: number, existing: DocPaymentLite[], amount: number): AddPaymentValidation {
+  if (!isFinite(amount) || amount <= 0) return { valid: false, error: 'Enter a payment amount greater than zero' };
+  const amtMinor = Math.round(amount * 100);
+  const { balanceMinor } = paymentSummary(totalMinor, existing);
+  if (amtMinor > balanceMinor) {
+    return {
+      valid: false,
+      error: `Payment cannot exceed the outstanding balance of ${(balanceMinor / 100).toFixed(2)}`,
+      amountMinor: balanceMinor,
+    };
+  }
+  return { valid: true, amountMinor: amtMinor };
+}
+
+/** Duplicate submission guard: same amount (paise), same date AND same
+ *  reference already recorded. */
+export function isDuplicatePayment(existing: DocPaymentLite[], amountMinor: number, date: string, reference: string): boolean {
+  return existing.some(
+    (p) =>
+      Math.round(p.amountMinor) === Math.round(amountMinor) &&
+      (p.date || '') === (date || '') &&
+      (p.reference || '') === (reference || ''),
+  );
+}

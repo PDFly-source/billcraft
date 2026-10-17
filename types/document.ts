@@ -65,6 +65,9 @@ export interface DocumentItem {
   discountType: 'percent' | 'fixed';
   discountValue: number;
   taxRate: number; // 0, 5, 12, 18, 28, etc.
+  /** Optional product/service tag. Older items have none and are treated
+   *  as untagged — the tag never changes tax or calculation behaviour. */
+  kind?: 'product' | 'service';
 }
 
 export interface BusinessDetails {
@@ -112,6 +115,15 @@ export interface DocumentMeta {
   receivedBy?: string;             // challan: acknowledgement
   linkedInvoice?: string;         // credit/debit note: original invoice no
   adjustmentReason?: string;       // credit/debit note: reason for issue
+  ewayBillNumber?: string;        // e-way bill reference (format-validated only)
+  /** Optional user-defined extra fields shown in preview/PDF when populated. */
+  customFields?: CustomField[];
+}
+
+export interface CustomField {
+  id: string;
+  label: string;  // 1..40 chars, validated
+  value: string;  // 0..120 chars
 }
 
 export type DiscountType = 'none' | 'percent' | 'fixed';
@@ -145,6 +157,21 @@ export interface PaymentDetails {
   upiPayeeName: string;
   showUPIQR: boolean;
   notes: string;
+  /** Optional HTTPS payment link (e.g. a payment page URL). Validated
+   *  before use; never treated as proof of payment. */
+  paymentLink?: string;
+  /** Include the payment link in preview/PDF only when explicitly enabled. */
+  showPaymentLink?: boolean;
+}
+
+/** A payment/advance recorded against this document while editing.
+ *  Merged into the saved document's PaymentRecord[] on Save to History. */
+export interface DocumentPayment {
+  id: string;
+  date: string;          // YYYY-MM-DD
+  amountMinor: number;   // paise, exact
+  method: PaymentMethod;
+  reference: string;     // optional transaction reference
 }
 
 export type SignatureType = 'none' | 'draw' | 'upload' | 'text';
@@ -234,6 +261,7 @@ export interface DocumentModel {
   watermark?: WatermarkSettings; // optional: older drafts have none
   density?: DocDensity;          // optional: page margin/typography density
   fontFamily?: DocFontFamily;    // optional: document font (default 'sans')
+  payments?: DocumentPayment[];  // optional: payments/advances recorded in editor
 }
 
 export interface AppSettings {

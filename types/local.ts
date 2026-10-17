@@ -6,9 +6,9 @@
  * the float value for display compatibility and `*Minor` integers (paise)
  * for exact arithmetic.
  */
-import { DocumentModel, DocumentType, DocumentCalculations, PaymentMethod } from './document';
+import { DocumentModel, DocumentType, DocumentCalculations, PaymentMethod, DocumentPayment } from './document';
 
-export const LOCAL_SCHEMA_VERSION = 1;
+export const LOCAL_SCHEMA_VERSION = 2;
 
 export interface Timestamped {
   createdAt: string; // ISO 8601
@@ -55,6 +55,7 @@ export interface PaymentRecord extends Timestamped {
   amountMinor: number;        // paise (exact)
   method: PaymentMethod;
   note: string;
+  reference?: string;          // optional transaction reference
 }
 
 export interface SavedDocument extends Timestamped {
@@ -73,6 +74,24 @@ export interface SavedDocument extends Timestamped {
   amountPaidMinor: number;    // derived at save time, paise
   convertedFromId: string | null; // quotation -> invoice link
   convertedToId: string | null;
+}
+
+export interface BankAccountRecord extends Timestamped {
+  id: string;
+  nickname: string;           // e.g. "HDFC Current" (required, unique-ish label)
+  accountHolder: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
+  branch: string;
+  paymentInstructions: string;
+}
+
+/** Reusable clause saved by the user (Phase 3). Stored in kv. */
+export interface ClauseRecord extends Timestamped {
+  id: string;
+  title: string;              // short label shown in the clause picker
+  text: string;               // full clause body
 }
 
 export interface BusinessProfileRecord extends Timestamped {
@@ -145,6 +164,8 @@ export interface BillCraftBackup {
     documents: SavedDocument[];
     images: { id: string; dataUrl: string }[];
     preferences: Partial<DocumentPreferences> | null;
+    bankAccounts?: BankAccountRecord[];   // v2+
+    clauses?: ClauseRecord[];            // v2+
   };
 }
 
@@ -159,10 +180,28 @@ export interface RestorePreview {
     documents: { added: number; updated: number; keptLocal: number };
     images: { added: number; updated: number };
     profileReplaced: boolean;
+    bankAccounts?: { added: number; updated: number };
+    clauses?: { added: number; updated: number };
   };
 }
 
 export interface DataCounts { clients: number; products: number; documents: number; images: number; }
+
+/** Convert editor-recorded payments into history PaymentRecords (shared by
+ *  the editor save path and tests). Existing records keep their ids. */
+export function toPaymentRecords(payments: DocumentPayment[], now = new Date().toISOString()): PaymentRecord[] {
+  return payments.map((p) => ({
+    id: p.id,
+    date: p.date,
+    amount: p.amountMinor / 100,
+    amountMinor: p.amountMinor,
+    method: p.method,
+    note: '',
+    reference: p.reference || '',
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
 
 export interface StorageStatus {
   available: boolean;

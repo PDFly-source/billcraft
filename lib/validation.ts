@@ -150,3 +150,65 @@ export function performDocumentHealthCheck(doc: DocumentModel): HealthCheckResul
     blockingErrors,
   };
 }
+
+// ===================== Phase 3 field validators =====================
+
+/**
+ * Validate an external payment link. Only HTTPS http(s) URLs are accepted;
+ * javascript:, data: and other schemes are rejected before the link is ever
+ * rendered clickable. A link is NEVER proof of payment.
+ */
+export function validatePaymentLink(url: string): { valid: boolean; error?: string } {
+  const v = (url || '').trim();
+  if (!v) return { valid: true }; // optional field
+  if (/\s/.test(v)) return { valid: false, error: 'Payment link cannot contain spaces' };
+  let parsed: URL;
+  try {
+    parsed = new URL(v);
+  } catch {
+    return { valid: false, error: 'Enter a complete payment URL (e.g. https://…)' };
+  }
+  if (parsed.protocol !== 'https:') return { valid: false, error: 'Payment links must start with https://' };
+  if (!parsed.hostname.includes('.')) return { valid: false, error: 'Payment link domain looks invalid' };
+  return { valid: true };
+}
+
+/** UPI VPA format check (name@provider). Only enforced when the user chose
+ *  to display a UPI QR — an empty UPI ID never blocks other methods. */
+export function isValidUpiId(upiId: string): boolean {
+  const v = (upiId || '').trim();
+  if (!v) return false;
+  return /^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}$/.test(v);
+}
+
+/** E-way bill number format check: 12 digits (format check ONLY — this does
+ *  not validate against any government service and implies nothing about
+ *  statutory compliance). */
+export function isValidEwayBillNumber(num: string): boolean {
+  const v = (num || '').trim();
+  if (!v) return true; // optional
+  return /^\d{12}$/.test(v);
+}
+
+export const CUSTOM_FIELD_LABEL_MAX = 40;
+export const CUSTOM_FIELD_VALUE_MAX = 120;
+
+/** Validate one custom label/value field. */
+export function validateCustomField(field: { label?: unknown; value?: unknown }): { valid: boolean; error?: string } {
+  const label = (field.label || '').toString().trim();
+  const value = (field.value || '').toString();
+  if (!label) return { valid: false, error: 'Field label is required' };
+  if (label.length > CUSTOM_FIELD_LABEL_MAX) return { valid: false, error: `Label must be ${CUSTOM_FIELD_LABEL_MAX} characters or fewer` };
+  if (value.length > CUSTOM_FIELD_VALUE_MAX) return { valid: false, error: `Value must be ${CUSTOM_FIELD_VALUE_MAX} characters or fewer` };
+  return { valid: true };
+}
+
+/** Item-level discount input check (percent type only here; fixed amounts
+ *  are clamped by the calculation engine to the line subtotal). */
+export function itemDiscountError(item: { discountType?: string; discountValue?: number }): string | null {
+  const v = Number(item.discountValue);
+  if (!isFinite(v)) return 'Discount must be a number';
+  if (v < 0) return 'Discount cannot be negative';
+  if (item.discountType === 'percent' && v > 100) return 'Percentage discount cannot exceed 100%';
+  return null;
+}

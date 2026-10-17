@@ -12,10 +12,11 @@
  */
 import {
   BillCraftBackup, RestorePreview, ClientRecord, ProductRecord,
-  SavedDocument, BusinessProfileRecord, LOCAL_SCHEMA_VERSION,
+  SavedDocument, BusinessProfileRecord, BankAccountRecord, ClauseRecord,
+  LOCAL_SCHEMA_VERSION,
 } from '@/types/local';
 import { STORES, withStores, requestAll, putRecord, clearStore } from './db/idb';
-import { kvGet, kvSet, getProfile, getDataCounts } from './db/repository';
+import { kvGet, kvSet, getProfile, getDataCounts, listBankAccounts, listClauses } from './db/repository';
 
 const MAX_BACKUP_BYTES = 60 * 1024 * 1024; // 60 MB safety limit
 
@@ -33,7 +34,12 @@ export async function buildBackup(): Promise<BillCraftBackup> {
     requestAll<{ id: string; dataUrl: string }>(STORES.images),
     getProfile(),
   ]);
-  const prefs = (await kvGet<Record<string, unknown>>('document-preferences')) || null;
+  const [prefsRaw, bankAccounts, clauses] = await Promise.all([
+    kvGet<Record<string, unknown>>('document-preferences'),
+    listBankAccounts(),
+    listClauses(),
+  ]);
+  const prefs = prefsRaw || null;
   return {
     app: 'billcraft',
     schemaVersion: LOCAL_SCHEMA_VERSION,
@@ -52,6 +58,8 @@ export async function buildBackup(): Promise<BillCraftBackup> {
       documents,
       images,
       preferences: prefs,
+      bankAccounts,  // v2
+      clauses,       // v2
     },
   };
 }
@@ -159,6 +167,23 @@ export function validateBackup(input: unknown): ValidationResult {
     const p = data.businessProfile as Record<string, unknown>;
     if (p.id !== 'business-profile') errs.push('businessProfile: unexpected id');
   }
+  // v2 arrays: absent in v1 backups (fine), must be well-formed when present
+  if (data.bankAccounts !== undefined) {
+    if (!Array.isArray(data.bankAccounts)) errs.push('data.bankAccounts must be an array');
+    else data.bankAccounts.forEach((a, i) => {
+      const o = a as Record<string, unknown>;
+      if (typeof o.id !== 'string' || !o.id) errs.push(`bankAccounts[${i}]: missing id`);
+      validateTimestamped(a, `bankAccounts[${i}]`, errs);
+    });
+  }
+  if (data.clauses !== undefined) {
+    if (!Array.isArray(data.clauses)) errs.push('data.clauses must be an array');
+    else data.clauses.forEach((c, i) => {
+      const o = c as Record<string, unknown>;
+      if (typeof o.id !== 'string' || !o.id) errs.push(`clauses[${i}]: missing id`);
+      validateTimestamped(c, `clauses[${i}]`, errs);
+    });
+  }
 
   if (errs.length) return { ok: false, error: `Backup validation failed: ${errs.slice(0, 5).join('; ')}${errs.length > 5 ? ` (+${errs.length - 5} more)` : ''}` };
   return { ok: true, backup: input as BillCraftBackup };
@@ -203,6 +228,7 @@ export async function previewRestore(backup: BillCraftBackup): Promise<RestorePr
     return { added, updated, keptLocal };
   };
   const localProfile = await getProfile();
+  const [localAccounts, localClauses] = await Promise.all([listBankAccounts(), listClauses()]);
   return {
     ok: true,
     schemaVersion: backup.schemaVersion,
@@ -217,6 +243,8 @@ export async function previewRestore(backup: BillCraftBackup): Promise<RestorePr
         updated: 0,
       },
       profileReplaced: !!backup.data.businessProfile && (!localProfile || newer(localProfile, backup.data.businessProfile as BusinessProfileRecord)),
+      bankAccounts: sum(localAccounts, backup.data.bankAccounts || []),
+      clauses: sum(localClauses, backup.data.clauses || []),
     },
   };
 }
@@ -325,6 +353,25 @@ export async function applyRestore(backup: BillCraftBackup, mode: 'merge' | 'rep
   }
   if (backup.data.preferences) {
     await kvSet('document-preferences', backup.data.preferences);
+  }
+  // v2 collections: merge by id, newer updatedAt wins (same deterministic rule)
+  if (Array.isArray(backup.data.bankAccounts)) {
+    const local = await listBankAccounts();
+    const byId = new Map(local.map((a: BankAccountRecord) => [a.id, a]));
+    for (const a of backup.data.bankAccounts) {
+      const existing = byId.get(a.id);
+      if (!existing || newer(existing, a)) byId.set(a.id, a);
+    }
+    await kvSet('bank-accounts', Array.from(byId.values()));
+  }
+  if (Array.isArray(backup.data.clauses)) {
+    const local = await listClauses();
+    const byId = new Map(local.map((c: ClauseRecord) => [c.id, c]));
+    for (const c of backup.data.clauses) {
+      const existing = byId.get(c.id);
+      if (!existing || newer(existing, c)) byId.set(c.id, c);
+    }
+    await kvSet('my-clauses', Array.from(byId.values()));
   }
 
   // verify

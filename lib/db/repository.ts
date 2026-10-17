@@ -10,7 +10,7 @@
 import {
   ClientRecord, ProductRecord, SavedDocument, BusinessProfileRecord,
   DocumentPreferences, DraftRecord, LOCAL_SCHEMA_VERSION, StorageStatus,
-  PaymentRecord, DocumentStatus,
+  PaymentRecord, DocumentStatus, BankAccountRecord, ClauseRecord,
 } from '@/types/local';
 import { STORES, withStores, requestAll, requestByKey, putRecord, deleteRecord, clearStore, countStore, getDB } from './idb';
 
@@ -268,12 +268,85 @@ export async function getDraft(): Promise<DraftRecord | undefined> {
   return kvGet<DraftRecord>('editor-draft');
 }
 
-export async function saveDraft(draft: DraftRecord): Promise<void> {
+/**
+ * Save the draft with an out-of-order guard: if a NEWER revision is already
+ * persisted (an in-flight older write resolves late), the stale write is
+ * skipped so it can never clobber the newer draft.
+ */
+export async function saveDraft(draft: DraftRecord): Promise<boolean> {
+  const existing = await kvGet<DraftRecord>('editor-draft');
+  if (existing && Number.isFinite(existing.revision) && existing.revision > draft.revision) {
+    return false; // stale write rejected
+  }
   await kvSet('editor-draft', draft);
+  return true;
 }
 
 export async function clearDraft(): Promise<void> {
   await kvDelete('editor-draft');
+}
+
+// ---------- Bank accounts (Phase 3: multiple accounts) ----------
+
+export async function listBankAccounts(): Promise<BankAccountRecord[]> {
+  const list = await kvGet<BankAccountRecord[]>('bank-accounts');
+  return Array.isArray(list) ? list : [];
+}
+
+export async function saveBankAccount(input: Partial<BankAccountRecord> & { id?: string }): Promise<BankAccountRecord> {
+  const list = await listBankAccounts();
+  const existing = input.id ? list.find((a) => a.id === input.id) : undefined;
+  const rec: BankAccountRecord = {
+    id: existing?.id || input.id || crypto.randomUUID(),
+    nickname: (input.nickname ?? existing?.nickname ?? 'My Account').trim() || 'My Account',
+    accountHolder: input.accountHolder ?? existing?.accountHolder ?? '',
+    bankName: input.bankName ?? existing?.bankName ?? '',
+    accountNumber: input.accountNumber ?? existing?.accountNumber ?? '',
+    ifsc: (input.ifsc ?? existing?.ifsc ?? '').toString().toUpperCase(),
+    branch: input.branch ?? existing?.branch ?? '',
+    paymentInstructions: input.paymentInstructions ?? existing?.paymentInstructions ?? '',
+    createdAt: existing?.createdAt || '',
+    updatedAt: '',
+  };
+  const stamped = withTimestamps(rec) as BankAccountRecord;
+  const next = existing ? list.map((a) => (a.id === stamped.id ? stamped : a)) : [...list, stamped];
+  await kvSet('bank-accounts', next);
+  return stamped;
+}
+
+export async function deleteBankAccount(id: string): Promise<void> {
+  const list = await listBankAccounts();
+  await kvSet('bank-accounts', list.filter((a) => a.id !== id));
+}
+
+// ---------- My Clauses (Phase 3: reusable custom clauses) ----------
+
+export async function listClauses(): Promise<ClauseRecord[]> {
+  const list = await kvGet<ClauseRecord[]>('my-clauses');
+  return Array.isArray(list) ? list : [];
+}
+
+export async function saveClause(input: Partial<ClauseRecord> & { id?: string }): Promise<ClauseRecord> {
+  const list = await listClauses();
+  const existing = input.id ? list.find((c) => c.id === input.id) : undefined;
+  const title = (input.title ?? existing?.title ?? '').trim();
+  const text = (input.text ?? existing?.text ?? '').trim();
+  const rec: ClauseRecord = {
+    id: existing?.id || input.id || crypto.randomUUID(),
+    title: title || 'Untitled clause',
+    text,
+    createdAt: existing?.createdAt || '',
+    updatedAt: '',
+  };
+  const stamped = withTimestamps(rec) as ClauseRecord;
+  const next = existing ? list.map((c) => (c.id === stamped.id ? stamped : c)) : [...list, stamped];
+  await kvSet('my-clauses', next);
+  return stamped;
+}
+
+export async function deleteClause(id: string): Promise<void> {
+  const list = await listClauses();
+  await kvSet('my-clauses', list.filter((c) => c.id !== id));
 }
 
 // ---------- Images ----------
