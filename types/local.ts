@@ -110,12 +110,15 @@ export interface BusinessProfileRecord extends Timestamped {
 export interface DocumentPreferences {
   defaultTemplate: string;
   defaultColorTheme: string;
+  defaultCustomColor?: string;      // custom accent hex when theme = custom
+  defaultFontFamily?: 'sans' | 'serif' | 'mono'; // document font preference
   watermark: {
     enabled: boolean;
     text: string;
     opacity: number;         // 0.04 .. 0.20
     position: 'center' | 'tl' | 'tr' | 'bl' | 'br';
     rotation: number;        // -45 .. 45 deg
+    source?: 'text' | 'logo'; // logo = business logo watermark
   };
   density: 'compact' | 'normal' | 'spacious';
   showBranding: boolean;

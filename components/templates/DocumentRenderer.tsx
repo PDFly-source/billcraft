@@ -6,7 +6,7 @@ import { DocumentModel } from '@/types/document';
 import { calculateDocument, calculateItemRow } from '@/lib/calculations';
 import { formatCurrency } from '@/lib/currency';
 import { generateUPIString, generateQRCodeDataUrl } from '@/lib/upi';
-import { getThemeColor } from '@/lib/themes';
+import { getThemeColor, getFontStack } from '@/lib/themes';
 import Image from 'next/image';
 
 interface DocumentRendererProps {
@@ -72,10 +72,13 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
       } shadow-sm border border-[#E7E0EE] transition-all ${className}`}
       style={{
         boxSizing: 'border-box',
+        fontFamily: getFontStack(doc.fontFamily),
       }}
     >
       {/* Optional watermark (clamped to safe readability bounds; never blocks text) */}
-      {doc.watermark?.enabled && doc.watermark.text.trim() ? (
+      {doc.watermark?.enabled && doc.watermark.source === 'logo' && doc.business.logo ? (
+        <LogoWatermark logo={doc.business.logo} opacity={doc.watermark.opacity} position={doc.watermark.position} />
+      ) : doc.watermark?.enabled && doc.watermark.source !== 'logo' && doc.watermark.text.trim() ? (
         <WatermarkOverlay text={doc.watermark.text} opacity={doc.watermark.opacity} position={doc.watermark.position} rotation={doc.watermark.rotation} />
       ) : null}
 
@@ -118,8 +121,45 @@ function getDocumentTitle(type: string): string {
       return 'ESTIMATE';
     case 'proforma':
       return 'PROFORMA INVOICE';
+    case 'purchase_order':
+      return 'PURCHASE ORDER';
+    case 'delivery_challan':
+      return 'DELIVERY CHALLAN';
+    case 'credit_note':
+      return 'CREDIT NOTE';
+    case 'debit_note':
+      return 'DEBIT NOTE';
     default:
       return 'TAX INVOICE';
+  }
+}
+
+/** Per-type label for the second party on the document. */
+function getPartyLabel(type: string): string {
+  switch (type) {
+    case 'purchase_order':
+      return 'Supplier';
+    case 'delivery_challan':
+      return 'Deliver To';
+    case 'credit_note':
+    case 'debit_note':
+      return 'Party';
+    case 'receipt':
+      return 'Received From';
+    default:
+      return 'Billed To';
+  }
+}
+
+/** Business-side label (who issues the document). */
+function getIssuerLabel(type: string): string {
+  switch (type) {
+    case 'purchase_order':
+      return 'Buyer';
+    case 'delivery_challan':
+      return 'Dispatched By';
+    default:
+      return 'From';
   }
 }
 
@@ -240,7 +280,7 @@ function renderModern(
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-[#FAF6EE] border border-[#E7E0EE] text-xs">
         <div>
           <span className="font-semibold text-[#6D6879] uppercase tracking-wider block mb-1">
-            Billed To
+            {getPartyLabel(doc.type)}
           </span>
           <p className="text-sm font-bold text-[#17151F]">{doc.customer.name || 'Client Name'}</p>
           {doc.customer.company && <p className="font-medium text-[#17151F]">{doc.customer.company}</p>}
@@ -323,7 +363,7 @@ function renderClassic(
       <div className="grid grid-cols-2 gap-4 text-xs font-sans">
         <div className="border border-[#E7E0EE] p-3">
           <span className="font-bold text-[#17151F] uppercase block mb-1 border-b border-[#E7E0EE] pb-1">
-            Bill To:
+            {getPartyLabel(doc.type)}:
           </span>
           <p className="font-bold text-[#17151F]">{doc.customer.name}</p>
           {doc.customer.company && <p>{doc.customer.company}</p>}
@@ -465,7 +505,7 @@ function renderCorporate(
 
       {/* Recipient */}
       <div className="border-l-4 p-3 bg-[#FAF6EE] text-xs" style={{ borderColor: theme.primary }}>
-        <span className="text-[#6D6879] uppercase font-bold">CLIENT INFORMATION</span>
+        <span className="text-[#6D6879] uppercase font-bold">{getPartyLabel(doc.type).toUpperCase()} INFORMATION</span>
         <p className="text-sm font-bold text-[#17151F] mt-0.5">{doc.customer.name}</p>
         <p className="text-[#6D6879]">{doc.customer.company} {doc.customer.address ? `• ${doc.customer.address}` : ''}</p>
         {doc.customer.gstin && <p className="font-medium text-[#17151F]">GSTIN: {doc.customer.gstin}</p>}
@@ -570,7 +610,7 @@ function renderBold(
 
       <div className="bg-[#FAF6EE] p-4 rounded-md text-xs grid grid-cols-2 gap-4">
         <div>
-          <span className="text-xs font-black uppercase tracking-wider text-[#6D6879] block mb-1">Customer</span>
+          <span className="text-xs font-black uppercase tracking-wider text-[#6D6879] block mb-1">{getPartyLabel(doc.type)}</span>
           <p className="font-bold text-sm text-[#17151F]">{doc.customer.name}</p>
           <p className="text-[#6D6879]">{doc.customer.company}</p>
           <p className="text-[#6D6879]">{doc.customer.address}</p>
@@ -700,7 +740,7 @@ function renderFreelancer(
       </div>
 
       <div className="bg-[#FAF6EE] p-4 rounded-xl border border-[#E7E0EE] text-xs">
-        <span className="text-[#6D6879] font-semibold block mb-1">CLIENT</span>
+        <span className="text-[#6D6879] font-semibold block mb-1">{getPartyLabel(doc.type).toUpperCase()}</span>
         <p className="font-bold text-sm text-[#17151F]">{doc.customer.name}</p>
         <p className="text-[#6D6879]">{doc.customer.company}</p>
       </div>
@@ -798,7 +838,7 @@ function renderRetail(
       </div>
 
       <div className="border-b border-dashed border-[#E7E0EE] pb-2">
-        <span className="text-[#6D6879]">Customer: </span>
+        <span className="text-[#6D6879]">{getPartyLabel(doc.type)}: </span>
         <span className="font-bold">{doc.customer.name || 'Counter Customer'}</span>
       </div>
 
@@ -1096,10 +1136,51 @@ function renderPaymentAndQR(
 // -------------------------------------------------------------
 // HELPER: Notes & Terms
 // -------------------------------------------------------------
+/** Type-specific metadata rows (PO delivery date, challan transport, note references). */
+function renderDocumentSpecifics(doc: DocumentModel) {
+  const rows: { label: string; value: string }[] = [];
+  if (doc.type === 'purchase_order' && doc.meta.expectedDeliveryDate) {
+    rows.push({ label: 'Expected Delivery', value: doc.meta.expectedDeliveryDate });
+  }
+  if (doc.type === 'delivery_challan') {
+    if (doc.meta.deliveryAddress) rows.push({ label: 'Delivery Address', value: doc.meta.deliveryAddress });
+    if (doc.meta.vehicleInfo) rows.push({ label: 'Vehicle / Transport', value: doc.meta.vehicleInfo });
+    if (doc.meta.referenceNumber) rows.push({ label: 'Reference (Invoice/PO)', value: doc.meta.referenceNumber });
+  }
+  if ((doc.type === 'credit_note' || doc.type === 'debit_note') && doc.meta.linkedInvoice) {
+    rows.push({ label: 'Original Invoice', value: doc.meta.linkedInvoice });
+  }
+  if ((doc.type === 'credit_note' || doc.type === 'debit_note') && doc.meta.adjustmentReason) {
+    rows.push({ label: 'Reason for Issue', value: doc.meta.adjustmentReason });
+  }
+  if (doc.type === 'delivery_challan') {
+    rows.push({ label: 'Received By', value: doc.meta.receivedBy || '__________________' });
+  }
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-[#E7E0EE] bg-[#FAF6EE] p-2.5 space-y-1">
+      {rows.map((r) => (
+        <div key={r.label} className="flex gap-2">
+          <span className="font-bold text-[#17151F] shrink-0">{r.label}:</span>
+          <span className="text-[#6D6879] break-words">{r.value}</span>
+        </div>
+      ))}
+      {(doc.type === 'credit_note' || doc.type === 'debit_note') && (
+        <p className="text-[10px] italic text-[#6D6879] pt-1 border-t border-[#E7E0EE]">
+          Tax treatment of this adjustment depends on the underlying transaction and applicable
+          Indian GST law. Please confirm statutory compliance before issuing.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function renderNotesAndTerms(doc: DocumentModel) {
-  if (!doc.notes && !doc.terms) return null;
+  const specifics = renderDocumentSpecifics(doc);
+  if (!doc.notes && !doc.terms && !specifics) return null;
   return (
     <div className="space-y-2 text-xs">
+      {specifics}
       {doc.notes && (
         <div>
           <span className="font-bold text-[#17151F] block mb-0.5">Notes:</span>
@@ -1158,6 +1239,29 @@ const WM_POS: Record<string, string> = {
   tr: 'top-[6%] right-[4%]',
   bl: 'bottom-[6%] left-[4%]',
   br: 'bottom-[6%] right-[4%]',
+};
+
+/** Business-logo watermark: image centred behind content, opacity clamped. */
+const LogoWatermark: React.FC<{
+  logo: string;
+  opacity: number;
+  position: 'center' | 'tl' | 'tr' | 'bl' | 'br';
+}> = ({ logo, opacity, position }) => {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) return null; // image failed to load -> no watermark at all
+  // logos are stronger than text: clamp tighter to keep totals legible
+  const safeOpacity = Math.min(0.15, Math.max(0.04, Number(opacity) || 0.08));
+  return (
+    <div aria-hidden className={`absolute pointer-events-none z-[1] flex ${WM_POS[position] || WM_POS.center}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={logo}
+        alt=""
+        onError={() => setFailed(true)}
+        style={{ opacity: safeOpacity, width: '42%', maxWidth: 300, objectFit: 'contain', userSelect: 'none' }}
+      />
+    </div>
+  );
 };
 
 const WatermarkOverlay: React.FC<{

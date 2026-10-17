@@ -245,7 +245,9 @@ export async function saveProfile(profile: BusinessProfileRecord): Promise<Busin
 export const DEFAULT_DOC_PREFS: DocumentPreferences = {
   defaultTemplate: 'modern',
   defaultColorTheme: 'plum',
-  watermark: { enabled: false, text: '', opacity: 0.08, position: 'center', rotation: -30 },
+  defaultCustomColor: '',
+  defaultFontFamily: 'sans',
+  watermark: { enabled: false, text: '', opacity: 0.08, position: 'center', rotation: -30, source: 'text' },
   density: 'normal',
   showBranding: true,
   autoRoundOff: true,
@@ -297,6 +299,11 @@ const prefixFor = (type: string, profile: BusinessProfileRecord): string => {
     case 'quotation': return profile.quotationPrefix || 'QUO';
     case 'receipt': return profile.receiptPrefix || 'RCP';
     case 'estimate': return profile.estimatePrefix || 'EST';
+    case 'proforma': return 'PI';
+    case 'purchase_order': return 'PO';
+    case 'delivery_challan': return 'CHN';
+    case 'credit_note': return 'CRN';
+    case 'debit_note': return 'DBN';
     default: return 'DOC';
   }
 };

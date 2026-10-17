@@ -14,11 +14,12 @@ import { TrendingUp, CheckCircle2, Clock, AlertTriangle, FileText, ChevronRight,
 export interface DashboardSectionProps {
   onOpenHistory: () => void;
   onOpenDocument?: (doc: SavedDocument) => void;
-  onCreateDocument: (type: 'invoice' | 'quotation' | 'receipt' | 'estimate') => void;
+  onCreateDocument: (type: import('@/types/document').DocumentType) => void;
 }
 
 const TYPE_LABEL: Record<string, string> = {
   invoice: 'Invoice', quotation: 'Quotation', receipt: 'Receipt', estimate: 'Estimate', proforma: 'Proforma',
+  purchase_order: 'Purchase Order', delivery_challan: 'Challan', credit_note: 'Credit Note', debit_note: 'Debit Note',
 };
 
 const StatTile: React.FC<{

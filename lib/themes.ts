@@ -105,3 +105,39 @@ export function getThemeColor(themeId: ColorThemeId, customHex?: string): ThemeC
   }
   return COLOR_THEMES[themeId] || COLOR_THEMES.plum;
 }
+
+// ------------------------- document fonts -------------------------
+
+import { DocFontFamily } from '@/types/document';
+
+export interface FontOption {
+  id: DocFontFamily;
+  name: string;
+  stack: string; // locally available system font stacks — no network requests
+  hint: string;
+}
+
+export const FONT_OPTIONS: FontOption[] = [
+  {
+    id: 'sans',
+    name: 'Modern Sans',
+    stack: "'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif",
+    hint: 'Clean default look',
+  },
+  {
+    id: 'serif',
+    name: 'Professional Serif',
+    stack: "Georgia, 'Times New Roman', 'Noto Serif', serif",
+    hint: 'Classic, formal documents',
+  },
+  {
+    id: 'mono',
+    name: 'Monospace',
+    stack: "'Cascadia Code', 'SF Mono', Consolas, 'DejaVu Sans Mono', monospace",
+    hint: 'Technical / engineering style',
+  },
+];
+
+export function getFontStack(id?: DocFontFamily): string {
+  return FONT_OPTIONS.find((f) => f.id === id)?.stack || FONT_OPTIONS[0].stack;
+}

@@ -26,6 +26,8 @@ import { PaymentEditor } from './PaymentEditor';
 import { SignatureEditor } from './SignatureEditor';
 import { NotesTermsEditor } from './NotesTermsEditor';
 import { DocumentRenderer } from '@/components/templates/DocumentRenderer';
+import { FONT_OPTIONS } from '@/lib/themes';
+import { Type, Droplets } from 'lucide-react';
 import { HealthCheckModal } from './HealthCheckModal';
 import { FullscreenPreviewModal } from './FullscreenPreviewModal';
 import { ResetConfirmModal } from './ResetConfirmModal';
@@ -405,6 +407,44 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
           </div>
 
+          {/* Font + per-document watermark toggle (Phase 2) */}
+          <div className="card p-2.5 flex items-center justify-between text-xs">
+            <div className="row" style={{ gap: '6px' }}>
+              <Type className="w-3.5 h-3.5 text-[#593C8F]" />
+              <span className="text-[#6D6879] dark:text-[#A39BB0] font-bold text-[11px]">Font:</span>
+              <select
+                value={doc.fontFamily || 'sans'}
+                onChange={(e) => onUpdateDocument({ ...doc, fontFamily: e.target.value as DocumentModel['fontFamily'] })}
+                className="font-bold text-[11px] bg-transparent text-[#17151F] dark:text-[#F8F5FC] outline-none cursor-pointer"
+              >
+                {FONT_OPTIONS.map((f) => (
+                  <option key={f.id} value={f.id} className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">{f.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="row" style={{ gap: '6px' }}>
+              <Droplets className="w-3.5 h-3.5 text-[#593C8F]" />
+              <label className="row cursor-pointer" style={{ gap: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(doc.watermark?.enabled)}
+                  onChange={(e) =>
+                    onUpdateDocument({
+                      ...doc,
+                      watermark: {
+                        ...(doc.watermark || { text: '', opacity: 0.08, position: 'center', rotation: -30 }),
+                        ...(doc.watermark || { source: 'text' as const }),
+                        enabled: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                <span className="text-[10.5px] font-bold text-[#6D6879] dark:text-[#A39BB0]">Watermark (this document)</span>
+              </label>
+            </div>
+          </div>
+
           {/* 1. BUSINESS DETAILS */}
           <div className="space-y-1">
             <div className="row sp">
@@ -445,7 +485,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           {/* 2. CUSTOMER */}
           <div className="space-y-1">
             <div className="row sp">
-              <div className="lab">CUSTOMER</div>
+              <div className="lab">
+                {doc.type === 'purchase_order' ? 'SUPPLIER' : doc.type === 'delivery_challan' ? 'RECIPIENT' : doc.type === 'credit_note' || doc.type === 'debit_note' ? 'PARTY' : 'CUSTOMER'}
+              </div>
               <button
                 type="button"
                 onClick={() => setIsEditingCustomer(!isEditingCustomer)}

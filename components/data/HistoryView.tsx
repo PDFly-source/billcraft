@@ -25,13 +25,16 @@ export interface HistoryViewProps {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  invoice: 'Invoice', quotation: 'Quotation', receipt: 'Receipt',
+  purchase_order: 'Purchase Order', delivery_challan: 'Challan', credit_note: 'Credit Note',
+  debit_note: 'Debit Note', invoice: 'Invoice', quotation: 'Quotation', receipt: 'Receipt',
   estimate: 'Estimate', proforma: 'Proforma',
 };
 const TYPE_COLOR: Record<string, string> = {
   invoice: 'bg-[#593C8F] text-white', quotation: 'bg-[#F0B83A] text-[#17151F]',
   receipt: 'bg-[#6FBF9E] text-[#17151F]', estimate: 'bg-[#5B8DB8] text-white',
-  proforma: 'bg-[#8B7BB8] text-white',
+  proforma: 'bg-[#8B7BB8] text-white', purchase_order: 'bg-[#B07C1E] text-white',
+  delivery_challan: 'bg-[#43A6C6] text-white', credit_note: 'bg-[#2E7D5B] text-white',
+  debit_note: 'bg-[#C25E5E] text-white',
 };
 
 function StatusChip({ d }: { d: SavedDocument }) {

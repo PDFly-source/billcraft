@@ -68,9 +68,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <label className="row sp"><span className="text-[10px] text-[#6D6879] dark:text-[#A39BB0]">Enable watermark on new documents</span>
               <input type="checkbox" checked={docPrefs.watermark.enabled} onChange={(e) => void saveDocPrefs({ ...docPrefs, watermark: { ...docPrefs.watermark, enabled: e.target.checked } })} />
             </label>
-            <label className="block"><span className="text-[10px] text-[#6D6879] dark:text-[#A39BB0]">Default text</span>
+            <label className="row sp"><span className="text-[10px] text-[#6D6879] dark:text-[#A39BB0]">Watermark source</span>
+              <select
+                className="rounded-xl border border-[#E7E0EE] dark:border-[#302B38] bg-white dark:bg-[#17141D] px-2 py-1.5 text-[10.5px]"
+                value={docPrefs.watermark.source || 'text'}
+                onChange={(e) => void saveDocPrefs({ ...docPrefs, watermark: { ...docPrefs.watermark, source: e.target.value as 'text' | 'logo' } })}
+              >
+                <option value="text">Text</option>
+                <option value="logo">Business logo</option>
+              </select>
+            </label>
+            <label className="block"><span className="text-[10px] text-[#6D6879] dark:text-[#A39BB0]">Default text {docPrefs.watermark.source === 'logo' ? '(unused for logo watermarks)' : ''}</span>
               <input className="w-full rounded-xl border border-[#E7E0EE] dark:border-[#302B38] bg-white dark:bg-[#17141D] px-2 py-1.5 text-[11px]" value={docPrefs.watermark.text} onChange={(e) => void saveDocPrefs({ ...docPrefs, watermark: { ...docPrefs.watermark, text: e.target.value } })} />
             </label>
+            {(docPrefs.watermark.source || 'text') === 'logo' && (
+              <span className="text-[9px] text-[#6D6879] dark:text-[#A39BB0] italic">Logo watermark uses your saved business logo; opacity is capped to keep totals legible. Documents without a logo fall back to no watermark.</span>
+            )}
             <label className="block"><span className="text-[10px] text-[#6D6879] dark:text-[#A39BB0]">Opacity: {(docPrefs.watermark.opacity * 100).toFixed(0)}%</span>
               <input type="range" min="4" max="20" step="1" value={docPrefs.watermark.opacity * 100} onChange={(e) => void saveDocPrefs({ ...docPrefs, watermark: { ...docPrefs.watermark, opacity: parseInt(e.target.value) / 100 } })} className="w-full" />
             </label>

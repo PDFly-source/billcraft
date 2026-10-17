@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { DocumentMeta, DocumentType } from '@/types/document';
-import { Calendar, Hash, FileText, Clock } from 'lucide-react';
+import { Calendar, Hash, FileText, Clock, Truck } from 'lucide-react';
 
 interface DocumentMetaFormProps {
   meta: DocumentMeta;
@@ -21,6 +21,14 @@ export const DocumentMetaForm: React.FC<DocumentMetaFormProps> = ({ meta, type, 
         return 'Estimate Number';
       case 'proforma':
         return 'Proforma Number';
+      case 'purchase_order':
+        return 'PO Number';
+      case 'delivery_challan':
+        return 'Challan Number';
+      case 'credit_note':
+        return 'Credit Note Number';
+      case 'debit_note':
+        return 'Debit Note Number';
       default:
         return 'Invoice Number';
     }
@@ -97,6 +105,118 @@ export const DocumentMetaForm: React.FC<DocumentMetaFormProps> = ({ meta, type, 
           </div>
         )}
       </div>
+
+      {/* Type-specific fields: PO delivery date, challan transport, note links */}
+      {type === 'purchase_order' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Expected Delivery Date
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={meta.expectedDeliveryDate || ''}
+                onChange={(e) => onChange({ expectedDeliveryDate: e.target.value })}
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+              <Truck className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 self-end italic sm:col-span-2">
+            Purchase order issued to the supplier below. Goods are ordered subject to the terms on this document.
+          </p>
+        </div>
+      )}
+
+      {type === 'delivery_challan' && (
+        <div className="space-y-3 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Vehicle / Transport Info
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={meta.vehicleInfo || ''}
+                  onChange={(e) => onChange({ vehicleInfo: e.target.value })}
+                  placeholder="e.g. AS01AB1234 / Sharma Transports"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+                />
+                <Truck className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Delivery Address
+              </label>
+              <input
+                type="text"
+                value={meta.deliveryAddress || ''}
+                onChange={(e) => onChange({ deliveryAddress: e.target.value })}
+                placeholder="Where the goods are delivered (if different from the recipient address)"
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Received By (acknowledgement)
+              </label>
+              <input
+                type="text"
+                value={meta.receivedBy || ''}
+                onChange={(e) => onChange({ receivedBy: e.target.value })}
+                placeholder="Name / signature of the person receiving goods"
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 self-end italic">
+              A delivery challan records dispatch/delivery of goods — it is not a tax invoice.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {(type === 'credit_note' || type === 'debit_note') && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Original Invoice Number {type === 'credit_note' ? '(if linked)' : '(if linked)'}
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={meta.linkedInvoice || ''}
+                onChange={(e) => onChange({ linkedInvoice: e.target.value })}
+                placeholder="e.g. INV-2026-0014"
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+              <FileText className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Reason for Issue
+            </label>
+            <input
+              type="text"
+              value={meta.adjustmentReason || ''}
+              onChange={(e) => onChange({ adjustmentReason: e.target.value })}
+              placeholder="e.g. Goods returned, rate revision, quantity correction"
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+            />
+          </div>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 italic sm:col-span-2">
+            {type === 'credit_note'
+              ? 'A credit note reduces the value of a previous supply (returns, corrections, discounts).'
+              : 'A debit note increases the value of a previous supply (post-supply price or tax increases).'}{' '}
+            Tax treatment depends on the transaction and applicable Indian GST rules.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Reference / PO Number */}

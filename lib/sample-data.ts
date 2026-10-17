@@ -42,6 +42,14 @@ export function generateDocNumber(type: DocumentType): string {
       return `EST-${year}-${rand}`;
     case 'proforma':
       return `PI-${year}-${rand}`;
+    case 'purchase_order':
+      return `PO-${year}-${rand}`;
+    case 'delivery_challan':
+      return `CHN-${year}-${rand}`;
+    case 'credit_note':
+      return `CRN-${year}-${rand}`;
+    case 'debit_note':
+      return `DBN-${year}-${rand}`;
   }
 }
 
@@ -59,6 +67,15 @@ export function createEmptyDocument(type: DocumentType = 'invoice', currency: Cu
       paymentTerms: 'Payment due on receipt',
       receiptFor: 'Services Rendered',
       amountReceived: 0,
+      ...(type === 'purchase_order'
+        ? { expectedDeliveryDate: getFutureDateString(10) }
+        : {}),
+      ...(type === 'delivery_challan'
+        ? { deliveryAddress: '', vehicleInfo: '', receivedBy: '' }
+        : {}),
+      ...(type === 'credit_note' || type === 'debit_note'
+        ? { linkedInvoice: '', adjustmentReason: '' }
+        : {}),
     },
     business: {
       name: '',
@@ -175,6 +192,11 @@ export function createSampleDocument(type: DocumentType = 'invoice', currency: C
       case 'receipt': return 'REC-2026-001';
       case 'estimate': return 'EST-2026-001';
       case 'proforma': return 'PI-2026-001';
+      case 'purchase_order': return 'PO-2026-001';
+      case 'delivery_challan': return 'CHN-2026-001';
+      case 'credit_note': return 'CRN-2026-001';
+      case 'debit_note': return 'DBN-2026-001';
+      default: return 'INV-2026-001';
     }
   };
 

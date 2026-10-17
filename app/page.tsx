@@ -46,6 +46,19 @@ import { convertDocument as convertDocModel } from '@/lib/sample-data';
 import { SavedDocument, DraftRecord } from '@/types/local';
 import { Undo2, X } from 'lucide-react';
 
+const SETTINGS_KEY = 'bc-app-settings';
+
+function loadPersistedSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<AppSettings>;
+    return { ...DEFAULT_SETTINGS, ...parsed };
+  } catch {
+    return DEFAULT_SETTINGS; // private mode / corrupt -> defaults
+  }
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   defaultCurrency: 'INR',
@@ -70,11 +83,11 @@ function AppShell() {
   const [selectedToolId, setSelectedToolId] = useState<ToolId>('gst');
   const [document, setDocument] = useState<DocumentModel>(() => createSampleDocument('invoice'));
   const [hasStartedEditing, setHasStartedEditing] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(loadPersistedSettings);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [splashState, setSplashState] = useState<'show' | 'fade' | 'done'>('show');
-  const { profile, docPrefs, saveDocument, setDocumentStatus, documents, refresh } = useLocalData();
+  const { profile, docPrefs, saveDocPrefs, saveDocument, setDocumentStatus, documents, refresh } = useLocalData();
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
   const [convertingFromId, setConvertingFromId] = useState<string | null>(null);
   const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -96,6 +109,11 @@ function AppShell() {
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
+
+  // Persist app settings (theme + defaults) so they survive reloads
+  useEffect(() => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+  }, [settings]);
 
   // Theme Sync
   useEffect(() => {
@@ -241,6 +259,9 @@ function AppShell() {
     // global document preferences + sequential numbering
     blank.watermark = docPrefs.watermark;
     blank.density = docPrefs.density;
+    blank.fontFamily = docPrefs.defaultFontFamily || 'sans';
+    if (docPrefs.defaultColorTheme) blank.colorTheme = docPrefs.defaultColorTheme as DocumentModel['colorTheme'];
+    if (docPrefs.defaultCustomColor && blank.colorTheme === 'custom') blank.customColor = docPrefs.defaultCustomColor;
     blank.meta.documentNumber = await nextDocumentNumber(type);
     setDocument(blank);
     setSavedDocId(null);
@@ -604,8 +625,12 @@ function AppShell() {
               currentTemplate={document.template}
               currentColorTheme={document.colorTheme}
               customColor={document.customColor}
+              currentFontFamily={document.fontFamily}
+              docTaxMode={document.tax.mode}
               onSelectTemplate={(tpl) => {
                 setDocument((prev) => ({ ...prev, template: tpl }));
+                // remember the choice as the default for new documents
+                void saveDocPrefs({ ...docPrefs, defaultTemplate: tpl });
                 showToast(`Applied ${tpl.toUpperCase()} template`);
               }}
               onSelectColorTheme={(thm, customHex) => {
@@ -614,7 +639,17 @@ function AppShell() {
                   colorTheme: thm,
                   customColor: customHex || prev.customColor,
                 }));
+                void saveDocPrefs({
+                  ...docPrefs,
+                  defaultColorTheme: thm,
+                  defaultCustomColor: customHex || (thm === 'custom' ? docPrefs.defaultCustomColor : ''),
+                });
                 showToast(`Applied ${thm} color theme`);
+              }}
+              onSelectFontFamily={(font) => {
+                setDocument((prev) => ({ ...prev, fontFamily: font }));
+                void saveDocPrefs({ ...docPrefs, defaultFontFamily: font });
+                showToast(`Applied ${font} font`);
               }}
               onNavigateToEditor={() => setActiveTab('editor')}
               onBack={() => setActiveTab('home')}

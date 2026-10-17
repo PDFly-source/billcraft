@@ -1,4 +1,22 @@
-export type DocumentType = 'invoice' | 'quotation' | 'receipt' | 'estimate' | 'proforma';
+export type DocumentType =
+  | 'invoice'
+  | 'quotation'
+  | 'receipt'
+  | 'estimate'
+  | 'proforma'
+  | 'purchase_order'
+  | 'delivery_challan'
+  | 'credit_note'
+  | 'debit_note';
+
+export const DOCUMENT_TYPES: DocumentType[] = [
+  'invoice', 'quotation', 'receipt', 'estimate', 'proforma',
+  'purchase_order', 'delivery_challan', 'credit_note', 'debit_note',
+];
+
+export function isKnownDocumentType(t: string): t is DocumentType {
+  return (DOCUMENT_TYPES as string[]).includes(t);
+}
 
 export type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP' | 'AED' | 'AUD' | 'CAD' | 'SGD';
 
@@ -74,6 +92,14 @@ export interface DocumentMeta {
   // Receipt-specific
   receiptFor: string;
   amountReceived: number;
+  // Purchase order / delivery challan specific (optional — older documents
+  // simply omit these; they default sensibly at render time)
+  expectedDeliveryDate?: string;   // PO: expected delivery
+  deliveryAddress?: string;        // challan: ship-to address
+  vehicleInfo?: string;            // challan: vehicle no / transport
+  receivedBy?: string;             // challan: acknowledgement
+  linkedInvoice?: string;         // credit/debit note: original invoice no
+  adjustmentReason?: string;       // credit/debit note: reason for issue
 }
 
 export type DiscountType = 'none' | 'percent' | 'fixed';
@@ -165,9 +191,12 @@ export interface WatermarkSettings {
   opacity: number;   // 0.04 .. 0.20 (safe readability bounds)
   position: 'center' | 'tl' | 'tr' | 'bl' | 'br';
   rotation: number;  // -45 .. 45 degrees
+  source?: 'text' | 'logo'; // logo = use the business logo image (default 'text')
 }
 
 export type DocDensity = 'compact' | 'normal' | 'spacious';
+
+export type DocFontFamily = 'sans' | 'serif' | 'mono';
 
 export interface DocumentModel {
   id: string;
@@ -192,6 +221,7 @@ export interface DocumentModel {
   showBillCraftBranding: boolean;
   watermark?: WatermarkSettings; // optional: older drafts have none
   density?: DocDensity;          // optional: page margin/typography density
+  fontFamily?: DocFontFamily;    // optional: document font (default 'sans')
 }
 
 export interface AppSettings {

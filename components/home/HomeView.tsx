@@ -192,7 +192,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <span className="bdg g text-[8px]">DEMO</span>
             </div>
             <b style={{ display: 'block', marginTop: '6px', fontSize: '11px', color: 'var(--ink)' }}>
-              Sample Invoice
+              Sample Document
             </b>
             <span className="m" style={{ fontSize: '9.5px', color: 'var(--mut)' }}>
               Interactive pre-filled data
