@@ -33,7 +33,10 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: 'any',
       },
       {
-        src: `${basePath}/icon-512.png`,
+        // Complete official lockup (emblem + wordmark + tagline) diagonally
+        // fitted inside the 66/108 maskable safe circle — never cropped by
+        // circle/squircle launcher masks. Generated from the official artwork.
+        src: `${basePath}/icon-512-maskable.png`,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',
