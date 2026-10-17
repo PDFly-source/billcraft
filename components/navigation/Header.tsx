@@ -26,7 +26,8 @@ export type NavTab =
   | 'welcome'
   | 'clients'
   | 'products'
-  | 'history';
+  | 'history'
+  | 'reports';
 
 interface HeaderProps {
   activeTab: NavTab;
@@ -118,6 +119,18 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Tools
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('reports')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              activeTab === 'reports'
+                ? 'bg-white dark:bg-[#1B1820] text-[#593C8F] dark:text-[#A8D5BA] shadow-xs'
+                : 'text-[#6D6879] dark:text-[#A39BB0] hover:text-[#17151F] dark:hover:text-[#F8F5FC]'
+            }`}
+          >
+            Reports
           </button>
 
           <button

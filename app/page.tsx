@@ -39,6 +39,7 @@ import { LocalDataProvider, useLocalData } from '@/hooks/useLocalData';
 import { ClientsView } from '@/components/data/ClientsView';
 import { ProductsView } from '@/components/data/ProductsView';
 import { HistoryView } from '@/components/data/HistoryView';
+import { ReportsView } from '@/components/data/ReportsView';
 import { DashboardSection } from '@/components/data/DashboardSection';
 import { PrivacyNoticeCard, PRIVACY_NOTICE_TEXT } from '@/components/data/DataSections';
 import { nextDocumentNumber, getDraft, saveDraft, clearDraft, getImage } from '@/lib/db/repository';
@@ -621,10 +622,11 @@ function AppShell() {
                 onOpenDocument={(saved) => void handleOpenSavedDoc(saved)}
                 onCreateDocument={(t) => void handleCreateDocument(t)}
               />
-              <div className="max-w-[420px] mx-auto grid grid-cols-3 gap-2" data-testid="data-nav">
+              <div className="max-w-[520px] mx-auto grid grid-cols-4 gap-2" data-testid="data-nav">
                 <button type="button" onClick={() => setActiveTab('clients')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>Clients</button>
                 <button type="button" onClick={() => setActiveTab('products')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>Catalogue</button>
                 <button type="button" onClick={() => setActiveTab('history')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>History</button>
+                <button type="button" onClick={() => setActiveTab('reports')} className="btn o justify-center inline-flex items-center gap-1.5" style={{ fontSize: 10.5 }}>Reports</button>
               </div>
             </div>
           )}
@@ -635,6 +637,10 @@ function AppShell() {
 
           {activeTab === 'products' && (
             <ProductsView onShowToast={showToast} />
+          )}
+
+          {activeTab === 'reports' && (
+            <ReportsView onShowToast={showToast} />
           )}
 
           {activeTab === 'history' && (

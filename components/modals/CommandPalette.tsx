@@ -21,6 +21,7 @@ import {
   User,
   Package,
   History,
+  BarChart3,
 } from 'lucide-react';
 import { DocumentType } from '@/types/document';
 
@@ -211,6 +212,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Your Data',
       icon: History,
       action: () => onAction('navigate', 'history'),
+    },
+    {
+      id: 'reports',
+      title: 'Open Reports — Revenue & GST',
+      category: 'Your Data',
+      icon: BarChart3,
+      action: () => onAction('navigate', 'reports'),
     },
     {
       id: 'toggle-theme',
