@@ -8,6 +8,7 @@ import {
   TemplateId,
   ColorThemeId,
   CurrencyCode,
+  prettyDocType,
 } from '@/types/document';
 import {
   createEmptyDocument,
@@ -268,7 +269,7 @@ function AppShell() {
     setConvertingFromId(null);
     setHasStartedEditing(true);
     setActiveTab('editor');
-    showToast(`New ${type.toUpperCase()} ${blank.meta.documentNumber}`);
+    showToast(`New ${prettyDocType(type)} ${blank.meta.documentNumber}`);
   };
 
   const handleLoadDemo = () => {

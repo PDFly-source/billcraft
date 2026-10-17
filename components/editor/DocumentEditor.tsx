@@ -7,6 +7,7 @@ import {
   TemplateId,
   ColorThemeId,
   DocumentItem,
+  prettyDocType,
 } from '@/types/document';
 import { performDocumentHealthCheck } from '@/lib/validation';
 import { useLocalData } from '@/hooks/useLocalData';
@@ -249,8 +250,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               >
                 <BillCraftIcon name="back" />
               </button>
-              <b className="capitalize text-[#17151F] dark:text-[#F8F5FC] text-sm">
-                {doc.type}
+              <b className="text-[#17151F] dark:text-[#F8F5FC] text-sm">
+                {prettyDocType(doc.type)}
               </b>
               <span className="bdg g text-[9px]">Draft</span>
             </div>
@@ -387,6 +388,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <option value="corporate" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Corporate</option>
                 <option value="elegant" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Elegant</option>
                 <option value="gst_pro" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">GST Pro</option>
+                <option value="bold" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Bold</option>
+                <option value="freelancer" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Freelancer</option>
+                <option value="service" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Service</option>
+                <option value="retail" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Retail</option>
               </select>
             </div>
 
@@ -403,6 +408,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <option value="cornflower" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Cornflower</option>
                 <option value="golden" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Golden</option>
                 <option value="emerald" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">Emerald</option>
+                <option value="custom" className="text-slate-900 bg-white dark:bg-[#1B1820] dark:text-slate-100">
+                  Custom {doc.colorTheme === 'custom' && doc.customColor ? `(${doc.customColor})` : ''}
+                </option>
               </select>
             </div>
           </div>

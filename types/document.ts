@@ -18,6 +18,18 @@ export function isKnownDocumentType(t: string): t is DocumentType {
   return (DOCUMENT_TYPES as string[]).includes(t);
 }
 
+export function prettyDocType(type: DocumentType): string {
+  switch (type) {
+    case 'purchase_order': return 'Purchase Order';
+    case 'delivery_challan': return 'Delivery Challan';
+    case 'credit_note': return 'Credit Note';
+    case 'debit_note': return 'Debit Note';
+    case 'proforma': return 'Proforma';
+    default: return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+}
+
+
 export type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP' | 'AED' | 'AUD' | 'CAD' | 'SGD';
 
 export interface CurrencyConfig {
