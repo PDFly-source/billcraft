@@ -18,7 +18,7 @@ import {
 import { getStorageStatus } from '@/lib/db/repository';
 import type { StorageStatus } from '@/types/local';
 
-const fmtBytes = (b: number) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : b > 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`);
+const fmtBytes = (b: number) => (b > 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : b > 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`);
 
 export const BackupRestoreSection: React.FC<{ onShowToast: (m: string) => void }> = ({ onShowToast }) => {
   const { refresh, counts } = useLocalData();
