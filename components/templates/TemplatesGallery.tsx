@@ -519,7 +519,7 @@ const TemplatePreviewModal: React.FC<{
         {/* Preview body — the real renderer at reduced scale */}
         <div className="overflow-auto p-2 flex-1 bg-[#F1ECF8]/60 dark:bg-[#100E14]" data-testid="template-preview">
           <div style={{ transform: 'scale(0.52)', transformOrigin: 'top left', width: '210mm' }}>
-            <DocumentRenderer document={sampleDoc} />
+            <DocumentRenderer document={sampleDoc} sheetId="gallery-sample-sheet" />
           </div>
         </div>
 

@@ -131,16 +131,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     return () => window.removeEventListener('afterprint', after);
   }, []);
 
-  /** Render a saved document off-screen for print/PDF export. */
+  /** Render a saved document off-screen for print/PDF export.
+   *  The host is exactly one A4 width (210mm) wide, so the capture is
+   *  always true-size regardless of viewport (Phase 4.1). */
   const hiddenHost = (d: SavedDocument | null) =>
     d ? (
       <div
         id="history-print-host"
         ref={exportHostRef}
         aria-hidden
-        style={{ position: 'fixed', left: -99999, top: 0, width: 794, background: '#fff', pointerEvents: 'none' }}
+        style={{ position: 'fixed', left: -99999, top: 0, width: '210mm', background: '#fff', pointerEvents: 'none' }}
       >
-        <DocumentRenderer document={d.document} />
+        <DocumentRenderer document={d.document} sheetId={`history-sheet-${d.id}`} />
       </div>
     ) : null;
 

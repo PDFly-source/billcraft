@@ -10,7 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { DocumentModel, DocumentCalculations } from '@/types/document';
 import { buildShareMessage, shareViaWhatsApp, normalizePhone, whatsappTextUrl } from '@/lib/whatsapp';
-import { generatePDFBlob } from '@/lib/pdf-generator';
+import { generatePDFBlob, getPrintableElement } from '@/lib/pdf-generator';
 import { formatCurrency } from '@/lib/currency';
 import { X, Send, Info, FileText, Phone } from 'lucide-react';
 
@@ -49,7 +49,7 @@ export const ShareModal: React.FC<{
     setBusy(true);
     setResult(null);
     try {
-      const el = document.getElementById('printable-document');
+      const el = getPrintableElement(['live-preview-export-sheet', 'fullscreen-preview-sheet-export', 'editor-export-sheet']);
       if (!el) throw new Error('Document preview not found — open the preview first');
       const pdf = await generatePDFBlob(el, { paperSize: doc.paperSize });
       const r = await shareViaWhatsApp(doc, calc, normalizePhone(phone), pdf, undefined, message);

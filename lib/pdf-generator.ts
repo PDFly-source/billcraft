@@ -476,16 +476,45 @@ export async function generatePDFBlob(
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      // Use the live viewport width so the cloned document keeps the SAME
-      // responsive layout as the visible page. Using element.scrollWidth here
-      // reflows the whole app into a narrow "mobile" layout inside the clone,
-      // which can hide the preview pane entirely (0x0 canvas) or collapse
-      // decoration elements.
-      windowWidth: (typeof window !== 'undefined' && window.innerWidth) || element.scrollWidth,
+      // Deterministic DESKTOP-width clone viewport (Phase 4.1). The A4
+      // sheet is a fixed 210mm (≈794px) canvas, so a 1000px clone window
+      // guarantees: (a) sm:+ breakpoints inside the sheet behave the same
+      // on a phone and on a desktop, (b) the sheet is never reflowed to a
+      // 390px "mobile" layout that would then be stretched onto an A4
+      // page, and (c) hidden export hosts render at full width. The PDF
+      // is therefore identical no matter which device exports it.
+      windowWidth: 1000,
+      windowHeight: 1400,
       onclone: (clonedDoc: Document, clonedElement: HTMLElement) => {
         // 1. Patch iframe window getComputedStyle
         if (clonedDoc.defaultView) {
           clonedDoc.defaultView.getComputedStyle = patchedGetComputedStyle;
+        }
+
+        // 1b. Neutralize ancestor clipping in the CLONE (Phase 4.1).
+        // The sheet may live inside a display:none preview pane (mobile) or a
+        // transform-scaled / overflow-clipped / max-height container. The
+        // live DOM is un-hidden by forceRenderable(), but overflow clipping,
+        // max-height and ancestor transforms still apply in the clone and
+        // would either truncate the capture (missing bottom pages) or stall
+        // the renderer. The export sheet is a fixed-width true-size sheet, so
+        // removing these constraints on the clone's ancestors cannot change
+        // its layout width — only lets it render at its full natural height.
+        try {
+          let anc = clonedElement.parentElement;
+          while (anc && anc !== clonedDoc.body) {
+            const cs = clonedDoc.defaultView
+              ? clonedDoc.defaultView.getComputedStyle(anc)
+              : null;
+            if (cs && cs.display === 'none') anc.style.display = 'block';
+            anc.style.overflow = 'visible';
+            anc.style.maxHeight = 'none';
+            anc.style.height = 'auto';
+            anc.style.transform = 'none';
+            anc = anc.parentElement;
+          }
+        } catch {
+          // ignore — best-effort sanitization
         }
 
         // 2. Sanitize all stylesheet/style tag content inside cloned document
@@ -528,6 +557,11 @@ export async function generatePDFBlob(
     }
   }
 
+  // Optional capture telemetry for automated verification (off by default).
+  if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__BC_PDF_DEBUG__) {
+    console.log(`[BCPDF] canvas=${canvas.width}x${canvas.height} paper=${paper} orient=${orientation}`);
+  }
+
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
   const pdf = new jsPDF({
     orientation,
@@ -550,8 +584,13 @@ export async function generatePDFBlob(
   pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
   heightLeft -= pageHeight;
 
-  // Multi-page pagination if content overflows single page
-  while (heightLeft > 0) {
+  // Multi-page pagination if content overflows single page.
+  // EPSILON: html2canvas rounds the capture to whole device pixels, so a
+  // full single-page sheet can measure a few tenths of a mm over 297mm.
+  // That rounding residue must NOT spill a nearly-empty second page —
+  // only a real overflow (more than 2mm) continues onto the next page.
+  const PAGE_EPSILON_MM = 2;
+  while (heightLeft > PAGE_EPSILON_MM) {
     position = -(imgHeight - heightLeft);
     pdf.addPage(paper, orientation);
     pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
@@ -559,6 +598,21 @@ export async function generatePDFBlob(
   }
 
   return pdf.output('blob');
+}
+
+
+/**
+ * Resolve the printable sheet element to export (Phase 4.1).
+ * Each view registers its own sheet id; the first mounted match wins.
+ * Falls back to the legacy shared id for any untouched call site.
+ */
+export function getPrintableElement(preferredIds: string[] = []): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  for (const id of preferredIds) {
+    const el = document.getElementById(id);
+    if (el) return el;
+  }
+  return document.getElementById('printable-document');
 }
 
 /**

@@ -1,13 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DocumentModel } from '@/types/document';
 import { calculateDocument } from '@/lib/calculations';
 import { formatCurrency } from '@/lib/currency';
 import { BillCraftIcon } from '@/components/ui/BillCraftIcons';
 import { BillCraftLogo } from '@/components/ui/BillCraftLogo';
+import { A4Page } from '@/components/preview/A4Page';
 import { DocumentRenderer } from '@/components/templates/DocumentRenderer';
-import { downloadPDF } from '@/lib/pdf-generator';
+import { downloadPDF, getPrintableElement } from '@/lib/pdf-generator';
+import { getPaymentView } from '@/lib/payment-view';
+import { calculateItemRow } from '@/lib/calculations';
+import { generateQRCodeDataUrl, generateUPIString } from '@/lib/upi';
 import { Loader2, MessageCircle } from 'lucide-react';
 import { ShareModal } from '@/components/data/ShareModal';
 
@@ -17,12 +21,16 @@ interface LivePreviewViewProps {
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+/** Hidden, always-mounted export sheet for this view (Phase 4.1). */
+const EXPORT_SHEET_ID = 'live-preview-export-sheet';
+
 export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
   document: doc,
   onBack,
   onShowToast,
 }) => {
   const [viewFullA4, setViewFullA4] = useState(false);
+  const [cardQrUrl, setCardQrUrl] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const calcs = calculateDocument(doc);
 
@@ -48,12 +56,38 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
 
   const [isShareOpen, setIsShareOpen] = useState(false);
 
+  // Real UPI QR (only when the shared payment view allows it) — replaces the
+  // old decorative placeholder SVG that was shown regardless of method.
+  const payView = getPaymentView(doc);
+  useEffect(() => {
+    let mounted = true;
+    if (payView.showQR) {
+      generateQRCodeDataUrl(
+        generateUPIString({
+          upiId: payView.qrUpiId,
+          payeeName: payView.qrPayeeName,
+          amount: calcs.grandTotal,
+          transactionNote: `${doc.type.toUpperCase()} ${doc.meta.documentNumber || ''}`,
+        })
+      ).then((url) => {
+        if (mounted) setCardQrUrl(url);
+      });
+    } else {
+      setCardQrUrl('');
+    }
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payView.showQR, payView.qrUpiId, payView.qrPayeeName, calcs.grandTotal, doc.meta.documentNumber, doc.type]);
+
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleExportPDF = async () => {
-    const el = window.document.getElementById('printable-document');
+    const el = getPrintableElement([EXPORT_SHEET_ID]);
     if (!el) {
       window.print();
       return;
@@ -134,12 +168,8 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
       </div>
 
       {viewFullA4 ? (
-        /* Full A4 Rendered Sheet */
-        <div className="rounded-xl overflow-hidden shadow-lg p-2 bg-[#EFEAF5] dark:bg-[#111015]">
-          <div className="transform scale-[0.78] sm:scale-100 origin-top">
-            <DocumentRenderer document={doc} />
-          </div>
-        </div>
+        /* Full A4 — true 210x297mm sheet uniformly scaled to this viewport */
+        <A4Page document={doc} sheetId="live-preview-a4-sheet" className="shadow-lg" />
       ) : (
         /* Mockup Styled .inv Card matching Reference HTML exactly */
         <div className="rounded-2xl p-3 bg-[#EFEAF5] dark:bg-[#20192C] space-y-3">
@@ -183,31 +213,24 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
               <tbody>
                 {doc.items.length > 0 ? (
                   doc.items.map((item, idx) => {
-                    const rowAmount = (Number(item.quantity) || 1) * (Number(item.rate) || 0);
+                    // Same shared row calculation as the A4 preview and PDF
+                    // (per-item discounts included) — never inline math.
+                    const row = calculateItemRow(item);
                     return (
                       <tr key={item.id || idx}>
                         <td>{item.name || 'Item'}</td>
-                        <td className="r">{item.quantity}</td>
-                        <td className="r">{formatCurrency(Number(item.rate) || 0, doc.currency)}</td>
-                        <td className="r">{formatCurrency(rowAmount, doc.currency)}</td>
+                        <td className="r">{row.quantity}</td>
+                        <td className="r">{formatCurrency(row.rate, doc.currency)}</td>
+                        <td className="r">{formatCurrency(row.total, doc.currency)}</td>
                       </tr>
                     );
                   })
                 ) : (
-                  <>
-                    <tr>
-                      <td>Professional Service</td>
-                      <td className="r">2</td>
-                      <td className="r">₹2,500</td>
-                      <td className="r">₹5,000</td>
-                    </tr>
-                    <tr>
-                      <td>Design Service</td>
-                      <td className="r">1</td>
-                      <td className="r">₹4,000</td>
-                      <td className="r">₹4,000</td>
-                    </tr>
-                  </>
+                  <tr>
+                    <td colSpan={4} style={{ color: 'var(--mut)', padding: '8px 0' }}>
+                      No items added yet
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -226,7 +249,12 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
               )}
               {doc.tax.mode !== 'none' && (
                 <div className="row sp">
-                  <span>{doc.tax.mode === 'gst' ? 'GST 18%' : 'Tax'}</span>
+                  {/* Label mirrors the A4 totals block (CGST+SGST / IGST / custom) */}
+                  <span>
+                    {doc.tax.mode === 'gst'
+                      ? doc.tax.gstType === 'igst' ? 'GST (IGST)' : 'GST (CGST+SGST)'
+                      : `${doc.tax.customTaxName || 'Tax'} (${doc.tax.customTaxRate}%)`}
+                  </span>
                   <span>{formatCurrency(calcs.totalTax, doc.currency)}</span>
                 </div>
               )}
@@ -256,31 +284,36 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
                 paddingTop: '10px',
               }}
             >
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span className="lab" style={{ fontSize: '7.5px' }}>PAYMENT</span>
                 <div style={{ marginTop: '2px' }}>
-                  <b>UPI / Bank Transfer</b>
+                  {/* Same normalized payment view as A4 preview / PDF / print */}
+                  <b>{payView.label}</b>
+                  {payView.detailLines.length > 0 && (
+                    <div style={{ marginTop: '2px', color: 'var(--mut)', fontSize: '7.5px', wordBreak: 'break-all' }}>
+                      {payView.detailLines.map((l) => `${l.label}: ${l.value}`).join(' · ')}
+                    </div>
+                  )}
+                  {payView.showPaymentLink && (
+                    <div style={{ marginTop: '2px', color: 'var(--pl)', fontSize: '7.5px', fontWeight: 700, wordBreak: 'break-all' }}>
+                      Pay online: {payView.paymentLink}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Exact QR Pattern SVG from Reference HTML */}
-              <svg width="46" height="46" viewBox="0 0 24 24" style={{ border: '1px solid var(--bd)', padding: '3px', borderRadius: '4px' }}>
-                <g fill="#17151F">
-                  <rect x="2" y="2" width="7" height="7" />
-                  <rect x="15" y="2" width="7" height="7" />
-                  <rect x="2" y="15" width="7" height="7" />
-                  <rect x="11" y="11" width="3" height="3" />
-                  <rect x="16" y="15" width="3" height="3" />
-                  <rect x="11" y="4" width="2" height="2" />
-                  <rect x="20" y="19" width="2" height="3" />
-                  <rect x="11" y="18" width="3" height="3" />
-                </g>
-                <g fill="#fff">
-                  <rect x="4" y="4" width="3" height="3" />
-                  <rect x="17" y="4" width="3" height="3" />
-                  <rect x="4" y="17" width="3" height="3" />
-                </g>
-              </svg>
+              {/* REAL scannable UPI QR — only when the shared payment view
+                  allows it. No placeholder QR is ever drawn. */}
+              {payView.showQR && cardQrUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cardQrUrl}
+                  alt="UPI Payment QR"
+                  width="46"
+                  height="46"
+                  style={{ border: '1px solid var(--bd)', padding: '3px', borderRadius: '4px', background: '#fff' }}
+                />
+              ) : null}
             </div>
 
             {/* Thank you note */}
@@ -304,9 +337,10 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
         onShowToast={onShowToast}
       />
 
-      {/* Hidden Sheet for PDF rendering */}
-      <div className="hidden">
-        <DocumentRenderer document={doc} />
+      {/* Hidden export sheet — always at true A4 width regardless of view
+          mode, so PDF output never depends on which preview is visible. */}
+      <div className="hidden" aria-hidden>
+        <DocumentRenderer document={doc} sheetId={EXPORT_SHEET_ID} />
       </div>
     </div>
   );

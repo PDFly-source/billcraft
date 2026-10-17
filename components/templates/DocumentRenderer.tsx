@@ -7,7 +7,7 @@ import { calculateDocument, calculateItemRow } from '@/lib/calculations';
 import { formatCurrency } from '@/lib/currency';
 import { generateUPIString, generateQRCodeDataUrl } from '@/lib/upi';
 import { paymentSummary } from '@/lib/finance';
-import { validatePaymentLink } from '@/lib/validation';
+import { getPaymentView } from '@/lib/payment-view';
 import { getThemeColor, getFontStack } from '@/lib/themes';
 import Image from 'next/image';
 import { formatDate } from '@/lib/format';
@@ -19,12 +19,20 @@ interface DocumentRendererProps {
   document: DocumentModel;
   className?: string;
   isPrinting?: boolean;
+  /**
+   * Unique DOM id for this sheet instance (Phase 4.1). Defaults to
+   * "printable-document" for backwards compatibility. Export/print call
+   * sites must query their OWN id so two mounted renderers can never
+   * capture the wrong document.
+   */
+  sheetId?: string;
 }
 
 export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   document: doc,
   className = '',
   isPrinting = false,
+  sheetId = 'printable-document',
 }) => {
   const [upiQrUrl, setUpiQrUrl] = useState<string>('');
   const calculations = calculateDocument(doc);
@@ -63,21 +71,29 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
   const docTitle = getDocumentTitle(doc.type);
 
+  // True paper geometry (Phase 4.1): the sheet ALWAYS renders at its real
+  // physical width — 210mm for A4 (≈794px at 96dpi) — regardless of the
+  // container or viewport. On-screen previews wrap it in a uniform
+  // scale-to-fit (see components/preview/A4Page.tsx), and the PDF export
+  // captures it at this exact width, so the on-screen page, the exported
+  // page and the printed page share the same 210:297 geometry and the same
+  // column layout. Long content flows past 297mm and the exporter slices
+  // it into full-height A4 pages.
+  const paperWidthMm = doc.paperSize === 'a5' ? 148 : doc.paperSize === 'letter' ? 216 : 210;
+  const paperHeightMm = doc.paperSize === 'a5' ? 210 : doc.paperSize === 'letter' ? 279 : 297;
+
   // Render template based on doc.template
   return (
     <div
-      id="printable-document"
+      id={sheetId}
+      data-paper-width-mm={paperWidthMm}
       className={`printable-document-sheet bg-white text-[#17151F] mx-auto select-text font-sans relative overflow-hidden ${
-        doc.paperSize === 'a5'
-          ? 'max-w-[148mm] min-h-[210mm]'
-          : doc.paperSize === 'letter'
-          ? 'max-w-[216mm] min-h-[279mm]'
-          : 'max-w-[210mm] min-h-[297mm]'
-      } ${
         doc.density === 'compact' ? 'p-4 sm:p-7' : doc.density === 'spacious' ? 'p-8 sm:p-12' : 'p-6 sm:p-10'
       } shadow-sm border border-[#E7E0EE] transition-all ${className}`}
       style={{
         boxSizing: 'border-box',
+        width: `${paperWidthMm}mm`,
+        minHeight: `${paperHeightMm}mm`,
         fontFamily: getFontStack(doc.fontFamily),
       }}
     >
@@ -883,9 +899,16 @@ function renderRetail(
 // HELPER: Items Table Renderer
 // -------------------------------------------------------------
 function renderItemsTable(doc: DocumentModel, theme: ReturnType<typeof getThemeColor>, styleVariant: string) {
+  // Fixed table layout on the fixed-width A4 sheet (Phase 4.1): the
+  // description column absorbs all the flexible space, numeric columns keep
+  // stable widths, monetary values are right-aligned under their headers,
+  // and long names/descriptions wrap instead of overflowing or clipping.
+  const hasGstCol = doc.tax.mode === 'gst';
+  const hasDiscCol = doc.discount.type !== 'none';
+  const hasTaxCol = doc.tax.mode !== 'none';
   return (
-    <div className="overflow-x-auto my-4">
-      <table className="w-full text-left text-xs border-collapse">
+    <div className="my-4">
+      <table className="w-full table-fixed text-left text-xs border-collapse">
         <thead>
           <tr
             className={`border-b text-[11px] font-bold uppercase tracking-wider ${
@@ -896,14 +919,14 @@ function renderItemsTable(doc: DocumentModel, theme: ReturnType<typeof getThemeC
                 : 'text-[#6D6879] border-[#E7E0EE]'
             }`}
           >
-            <th className="py-2 px-2 w-8">#</th>
-            <th className="py-2 px-2">Item & Description</th>
-            {doc.tax.mode === 'gst' && <th className="py-2 px-2 text-center">HSN/SAC</th>}
-            <th className="py-2 px-2 text-center">Qty</th>
-            <th className="py-2 px-2 text-right">Rate</th>
-            {doc.discount.type !== 'none' && <th className="py-2 px-2 text-right">Disc</th>}
-            {doc.tax.mode !== 'none' && <th className="py-2 px-2 text-center">Tax</th>}
-            <th className="py-2 px-2 text-right">Amount</th>
+            <th className="py-2 px-2 w-[5%]">#</th>
+            <th className={`py-2 px-2 ${hasGstCol ? 'w-[31%]' : hasDiscCol || hasTaxCol ? 'w-[42%]' : 'w-[55%]'}`}>Item & Description</th>
+            {hasGstCol && <th className="py-2 px-2 text-center w-[12%]">HSN/SAC</th>}
+            <th className="py-2 px-2 text-center w-[11%]">Qty</th>
+            <th className="py-2 px-2 text-right w-[15%]">Rate</th>
+            {hasDiscCol && <th className="py-2 px-2 text-right w-[11%]">Disc</th>}
+            {hasTaxCol && <th className="py-2 px-2 text-center w-[9%]">Tax</th>}
+            <th className="py-2 px-2 text-right w-[17%]">Amount</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#E7E0EE] text-[#17151F]">
@@ -912,10 +935,10 @@ function renderItemsTable(doc: DocumentModel, theme: ReturnType<typeof getThemeC
             return (
               <tr key={item.id || idx} className="hover:bg-[#FAF6EE]/50">
                 <td className="py-2.5 px-2 text-[#6D6879] text-[11px] align-top">{idx + 1}</td>
-                <td className="py-2.5 px-2 align-top">
-                  <div className="font-semibold text-[#17151F]">{item.name || 'Untitled Item'}</div>
+                <td className="py-2.5 px-2 align-top break-words">
+                  <div className="font-semibold text-[#17151F] break-words">{item.name || 'Untitled Item'}</div>
                   {item.description && (
-                    <div className="text-[11px] text-[#6D6879] whitespace-pre-line mt-0.5">{item.description}</div>
+                    <div className="text-[11px] text-[#6D6879] whitespace-pre-line break-words mt-0.5">{item.description}</div>
                   )}
                 </td>
                 {doc.tax.mode === 'gst' && (
@@ -956,8 +979,8 @@ function renderGSTTable(doc: DocumentModel, theme: ReturnType<typeof getThemeCol
   const isCgstSgst = doc.tax.gstType === 'cgst_sgst';
 
   return (
-    <div className="overflow-x-auto my-2">
-      <table className="w-full text-left text-[11px] border border-[#E7E0EE] border-collapse">
+    <div className="my-2">
+      <table className="w-full table-fixed text-left text-[11px] border border-[#E7E0EE] border-collapse">
         <thead className="bg-[#FAF6EE] font-bold border-b border-[#E7E0EE]">
           <tr>
             <th className="p-1.5 border-r border-[#E7E0EE] w-6 text-center">#</th>
@@ -984,9 +1007,9 @@ function renderGSTTable(doc: DocumentModel, theme: ReturnType<typeof getThemeCol
             return (
               <tr key={item.id || idx}>
                 <td className="p-1.5 border-r border-[#E7E0EE] text-center">{idx + 1}</td>
-                <td className="p-1.5 border-r border-[#E7E0EE]">
-                  <div className="font-semibold">{item.name}</div>
-                  {item.description && <div className="text-[10px] text-[#6D6879]">{item.description}</div>}
+                <td className="p-1.5 border-r border-[#E7E0EE] break-words">
+                  <div className="font-semibold break-words">{item.name}</div>
+                  {item.description && <div className="text-[10px] text-[#6D6879] break-words">{item.description}</div>}
                 </td>
                 <td className="p-1.5 border-r border-[#E7E0EE] text-center font-mono">{item.hsn || '—'}</td>
                 <td className="p-1.5 border-r border-[#E7E0EE] text-center">{row.quantity}</td>
@@ -1125,55 +1148,45 @@ function renderPaymentAndQR(
   theme: ReturnType<typeof getThemeColor>,
   upiQrUrl: string
 ) {
-  const hasBank = doc.payment.method === 'bank' && (doc.payment.bankName || doc.payment.accountNumber);
-  const hasUPI = doc.payment.method === 'upi' && doc.payment.upiId;
-
-  if (!hasBank && !hasUPI && doc.payment.method === 'cash') {
-    return (
-      <div className="text-xs p-3 rounded bg-[#FAF6EE] border border-[#E7E0EE]">
-        <span className="font-bold text-[#17151F] block">Payment Mode:</span>
-        <p className="text-[#6D6879]">Cash on Delivery / Direct Settlement</p>
-      </div>
-    );
-  }
+  // Normalized payment presentation (Phase 4.1): the SAME view model drives
+  // the Mobile Preview Card, this A4 sheet, the PDF and the print output.
+  const pay = getPaymentView(doc);
+  const showQrImage = pay.showQR && upiQrUrl !== '';
 
   return (
     <div className="p-3.5 rounded-lg bg-[#FAF6EE] border border-[#E7E0EE] text-xs">
       <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1 flex-1">
+        <div className="space-y-1 flex-1 min-w-0">
           <span className="font-bold text-[#17151F] uppercase tracking-wider text-[11px] block">
-            Payment Details
+            Payment Method
           </span>
+          <p className="font-bold text-[#17151F]">{pay.label}</p>
+          {pay.description && <p className="text-[#6D6879]">{pay.description}</p>}
 
-          {hasBank && (
+          {pay.detailLines.length > 0 && (
             <div className="space-y-0.5 text-[#17151F] mt-1">
-              <p><span className="text-[#6D6879]">Bank:</span> <span className="font-semibold">{doc.payment.bankName}</span></p>
-              <p><span className="text-[#6D6879]">A/C Name:</span> <span className="font-medium">{doc.payment.accountHolder || doc.business.name}</span></p>
-              <p><span className="text-[#6D6879]">A/C No:</span> <span className="font-mono font-semibold">{doc.payment.accountNumber}</span></p>
-              <p><span className="text-[#6D6879]">IFSC:</span> <span className="font-mono font-semibold">{doc.payment.ifsc}</span></p>
-              {doc.payment.branch && <p><span className="text-[#6D6879]">Branch:</span> <span>{doc.payment.branch}</span></p>}
+              {pay.detailLines.map((line) => (
+                <p key={line.label}>
+                  <span className="text-[#6D6879]">{line.label}:</span>{' '}
+                  <span className={pay.method === 'upi' && line.label === 'UPI ID' ? 'font-mono font-bold text-[#17151F]' : 'font-semibold'}>{line.value}</span>
+                </p>
+              ))}
             </div>
           )}
 
-          {hasUPI && (
-            <div className="space-y-0.5 text-[#17151F] mt-1">
-              <p><span className="text-[#6D6879]">UPI ID:</span> <span className="font-mono font-bold text-[#17151F]">{doc.payment.upiId}</span></p>
-              {doc.payment.upiPayeeName && <p><span className="text-[#6D6879]">Payee:</span> <span>{doc.payment.upiPayeeName}</span></p>}
-            </div>
-          )}
-
-          {/* External payment link — only rendered when it passes the same
-              https:// validation used in the editor; never treated as proof of payment */}
-          {doc.payment.showPaymentLink && doc.payment.paymentLink && validatePaymentLink(doc.payment.paymentLink).valid && (
+          {/* External payment link — separate from the primary method; only
+              rendered when explicitly enabled AND it passes the same https://
+              validation used in the editor; never treated as proof of payment */}
+          {pay.showPaymentLink && (
             <div className="mt-1.5">
               <a
-                href={doc.payment.paymentLink}
+                href={pay.paymentLink}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
                 className="inline-block font-bold underline break-all"
                 style={{ color: theme.primary }}
               >
-                Pay online: {doc.payment.paymentLink}
+                Pay online: {pay.paymentLink}
               </a>
             </div>
           )}
@@ -1198,8 +1211,9 @@ function renderPaymentAndQR(
           )}
         </div>
 
-        {/* Client-Side QR Code */}
-        {hasUPI && doc.payment.showUPIQR && upiQrUrl && (
+        {/* Client-Side QR Code — a REAL UPI QR only when the shared
+            payment view says the conditions are met (never a placeholder). */}
+        {showQrImage && (
           <div className="text-center p-1.5 bg-white rounded border border-[#E7E0EE] shrink-0">
             <div className="relative w-20 h-20">
               <Image src={upiQrUrl} alt="UPI Payment QR" fill className="object-contain" referrerPolicy="no-referrer" unoptimized />

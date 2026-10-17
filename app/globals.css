@@ -565,19 +565,37 @@ body {
     display: none !important;
   }
 
+  /* Phase 4.1: the sheet prints at its TRUE physical width — 210mm for A4
+     (the renderer marks its paper width in data-paper-width-mm) — so the
+     printed page matches the on-screen A4 preview and the exported PDF.
+     Preview scale transforms are neutralized so nothing prints shrunken. */
   .printable-document-sheet {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
     margin: 0 !important;
+    max-width: none !important;
+  }
+  .printable-document-sheet[data-paper-width-mm='210'] { width: 210mm !important; }
+  .printable-document-sheet[data-paper-width-mm='216'] { width: 216mm !important; }
+  .printable-document-sheet[data-paper-width-mm='148'] { width: 148mm !important; }
+  .doc-scale-inner {
+    transform: none !important;
+  }
+  .doc-preview-scaler {
     padding: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    background: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+  .doc-scale-frame {
+    width: auto !important;
+    height: auto !important;
   }
 
   @page {
-    size: auto;
-    margin: 10mm;
+    size: A4;
+    margin: 0;
   }
 }
 

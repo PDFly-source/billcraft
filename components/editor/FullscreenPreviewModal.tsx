@@ -2,8 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { DocumentModel } from '@/types/document';
-import { DocumentRenderer } from '@/components/templates/DocumentRenderer';
-import { downloadPDF, shareOrDownloadPDF } from '@/lib/pdf-generator';
+import { A4Page } from '@/components/preview/A4Page';
+import { downloadPDF, shareOrDownloadPDF, getPrintableElement } from '@/lib/pdf-generator';
+
+/** Every fullscreen preview owns its export sheet (Phase 4.1). */
+const SHEET_ID = 'fullscreen-preview-sheet';
 import { BillCraftIcon } from '@/components/ui/BillCraftIcons';
 import {
   ZoomIn,
@@ -42,8 +45,9 @@ export const FullscreenPreviewModal: React.FC<FullscreenPreviewModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.15, 1.8));
-  const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.15, 0.5));
+  // Zoom is a multiplier on top of A4Page's automatic fit-to-width scale.
+  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.15, 2));
+  const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.15, 0.6));
   const handleResetZoom = () => setScale(1);
 
   const handlePrint = () => {
@@ -51,7 +55,7 @@ export const FullscreenPreviewModal: React.FC<FullscreenPreviewModalProps> = ({
   };
 
   const handleDownload = async () => {
-    const el = window.document.getElementById('printable-document');
+    const el = getPrintableElement([`${SHEET_ID}-export`, SHEET_ID]);
     if (!el) return;
 
     try {
@@ -72,7 +76,7 @@ export const FullscreenPreviewModal: React.FC<FullscreenPreviewModalProps> = ({
   };
 
   const handleShare = async () => {
-    const el = window.document.getElementById('printable-document');
+    const el = getPrintableElement([`${SHEET_ID}-export`, SHEET_ID]);
     if (!el) return;
 
     try {
@@ -190,18 +194,15 @@ export const FullscreenPreviewModal: React.FC<FullscreenPreviewModalProps> = ({
         </div>
       </div>
 
-      {/* Document Viewport with Zoom Container */}
-      <div className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center items-start bg-[#EFEAF5] dark:bg-[#111015]">
-        <div
-          style={{
-            transform: `scale(${scale})`,
-            transformOrigin: 'top center',
-            transition: 'transform 0.15s ease-out',
-          }}
-          className="shadow-2xl rounded-sm my-auto"
-        >
-          <DocumentRenderer document={doc} />
-        </div>
+      {/* Document Viewport — true A4 canvas uniformly scaled to fit */}
+      <div className="flex-1 overflow-auto p-3 sm:p-8 bg-[#EFEAF5] dark:bg-[#111015]">
+        <A4Page
+          document={doc}
+          sheetId={SHEET_ID}
+        exportSheetId={`${SHEET_ID}-export`}
+          zoom={scale}
+          className="mx-auto max-w-[min(100%,1100px)] shadow-2xl"
+        />
       </div>
     </div>
   );

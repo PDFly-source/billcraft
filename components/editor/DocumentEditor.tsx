@@ -15,7 +15,7 @@ import { paymentSummary } from '@/lib/finance';
 import { useLocalData } from '@/hooks/useLocalData';
 import { ClientPickerModal, ProductPickerModal } from '@/components/data/Pickers';
 import { findDuplicateClient, getClient, getProduct } from '@/lib/db/repository';
-import { downloadPDF } from '@/lib/pdf-generator';
+import { downloadPDF, getPrintableElement } from '@/lib/pdf-generator';
 import { convertDocument, generateDocNumber } from '@/lib/sample-data';
 import { calculateDocument, calculateItemRow } from '@/lib/calculations';
 import { formatCurrency } from '@/lib/currency';
@@ -28,11 +28,11 @@ import { TaxDiscountEditor } from './TaxDiscountEditor';
 import { PaymentEditor } from './PaymentEditor';
 import { SignatureEditor } from './SignatureEditor';
 import { NotesTermsEditor } from './NotesTermsEditor';
-import { DocumentRenderer } from '@/components/templates/DocumentRenderer';
 import { FONT_OPTIONS } from '@/lib/themes';
 import { Type, Droplets } from 'lucide-react';
 import { HealthCheckModal } from './HealthCheckModal';
 import { FullscreenPreviewModal } from './FullscreenPreviewModal';
+import { A4Page } from '@/components/preview/A4Page';
 import { ResetConfirmModal } from './ResetConfirmModal';
 import {
   Loader2,
@@ -64,6 +64,11 @@ interface DocumentEditorProps {
   autosaveStatus?: 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
   onRetrySave?: () => void;
 }
+
+/** The editor's own live-preview sheet id (Phase 4.1). */
+const EDITOR_SHEET_ID = 'editor-live-sheet';
+/** Off-screen true-size sheet the PDF exporter captures (Phase 4.1). */
+const EDITOR_EXPORT_SHEET_ID = 'editor-export-sheet';
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   document: doc,
@@ -197,7 +202,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       return;
     }
 
-    const el = window.document.getElementById('printable-document');
+    const el = getPrintableElement([EDITOR_EXPORT_SHEET_ID, EDITOR_SHEET_ID]);
     if (!el) return;
 
     try {
@@ -922,10 +927,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </span>
             </div>
 
-            <div className="max-h-[82vh] overflow-y-auto rounded-xl p-3 bg-[#EFEAF5] dark:bg-[#111015]">
-              <div className="transform scale-[0.82] origin-top">
-                <DocumentRenderer document={doc} />
-              </div>
+            {/* True A4 sheet uniformly scaled to the pane (Phase 4.1) —
+                identical geometry to the exported PDF. */}
+            <div className="max-h-[82vh] overflow-y-auto rounded-xl">
+              <A4Page document={doc} sheetId={EDITOR_SHEET_ID} exportSheetId={EDITOR_EXPORT_SHEET_ID} />
             </div>
           </div>
         </div>

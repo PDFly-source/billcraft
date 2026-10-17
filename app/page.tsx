@@ -34,7 +34,7 @@ import { ToastContainer, ToastMessage } from '@/components/ui/ToastContainer';
 import { PWAInstallBanner } from '@/components/pwa/PWAInstallBanner';
 import { OfflineIndicator } from '@/components/pwa/OfflineIndicator';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
-import { downloadPDF } from '@/lib/pdf-generator';
+import { downloadPDF, getPrintableElement } from '@/lib/pdf-generator';
 import { LocalDataProvider, useLocalData } from '@/hooks/useLocalData';
 import { ClientsView } from '@/components/data/ClientsView';
 import { ProductsView } from '@/components/data/ProductsView';
@@ -275,7 +275,7 @@ function AppShell() {
       // Cmd/Ctrl + E -> Export PDF
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        const el = window.document.getElementById('printable-document');
+        const el = getPrintableElement(['editor-export-sheet', 'live-preview-export-sheet', 'fullscreen-preview-sheet-export']);
         if (el) {
           downloadPDF(el, document, { paperSize: document.paperSize })
             .then((filename) => showToast(`PDF exported: ${filename}`))
@@ -624,7 +624,7 @@ function AppShell() {
         setActiveTab('preview');
         break;
       case 'export-pdf': {
-        const el = window.document.getElementById('printable-document');
+        const el = getPrintableElement(['editor-export-sheet', 'live-preview-export-sheet', 'fullscreen-preview-sheet-export']);
         if (el) {
           downloadPDF(el, document)
             .then((f) => showToast(`PDF exported: ${f}`))
