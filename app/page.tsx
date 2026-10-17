@@ -42,6 +42,7 @@ import { HistoryView } from '@/components/data/HistoryView';
 import { DashboardSection } from '@/components/data/DashboardSection';
 import { PrivacyNoticeCard, PRIVACY_NOTICE_TEXT } from '@/components/data/DataSections';
 import { nextDocumentNumber, getDraft, saveDraft, clearDraft, getImage } from '@/lib/db/repository';
+import { toPaymentRecords } from '@/types/local';
 import { calculateDocument } from '@/lib/calculations';
 import { convertDocument as convertDocModel } from '@/lib/sample-data';
 import { SavedDocument, DraftRecord } from '@/types/local';
@@ -91,7 +92,7 @@ function AppShell() {
   const { profile, docPrefs, saveDocPrefs, saveDocument, setDocumentStatus, documents, refresh } = useLocalData();
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
   const [convertingFromId, setConvertingFromId] = useState<string | null>(null);
-  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>('idle');
   const [saveBusy, setSaveBusy] = useState(false);
   const [recoverableDraft, setRecoverableDraft] = useState<DraftRecord | null>(null);
   const [noticeSeen, setNoticeSeen] = useState(true);
@@ -298,20 +299,70 @@ function AppShell() {
   };
 
   // ---------- Draft autosave (Feature 6) ----------
+  // State machine per the spec: edits -> 'unsaved'; after the debounced write
+  // succeeds -> 'saved'; on failure -> 'error'. While in 'error', further edits
+  // are NOT queued silently (no rapid retry spam) — the user decides via the
+  // retry affordance, except a fresh edit resumes the normal cycle.
+  const lastPersistedRev = React.useRef(0);
+  const latestDocRef = React.useRef(document);
+  latestDocRef.current = document;
+  const latestEditingRef = React.useRef(hasStartedEditing);
+  latestEditingRef.current = hasStartedEditing;
+
+  const retryDraftSave = useCallback(async () => {
+    const rev = ++autosaveRev.current;
+    setAutosaveStatus('saving');
+    try {
+      await saveDraft({
+        revision: rev,
+        savedAt: new Date().toISOString(),
+        document: latestDocRef.current,
+        hasStartedEditing: latestEditingRef.current,
+      });
+      if (autosaveRev.current === rev) {
+        lastPersistedRev.current = rev;
+        setAutosaveStatus('saved');
+      }
+    } catch {
+      if (autosaveRev.current === rev) setAutosaveStatus('error');
+    }
+  }, []);
+
   useEffect(() => {
     if (!hasStartedEditing) return;
+    if (autosaveStatus === 'error') return; // paused; retry is explicit
     setAutosaveStatus('saving');
     const rev = ++autosaveRev.current;
     const timer = setTimeout(async () => {
       try {
         await saveDraft({ revision: rev, savedAt: new Date().toISOString(), document, hasStartedEditing });
-        if (autosaveRev.current === rev) setAutosaveStatus('saved'); // only after the write succeeded
+        if (autosaveRev.current === rev) {
+          lastPersistedRev.current = rev;
+          setAutosaveStatus('saved'); // only after the write succeeded
+        }
       } catch {
         if (autosaveRev.current === rev) setAutosaveStatus('error'); // never claim saved on failure
       }
     }, 900); // debounce frequent edits
     return () => clearTimeout(timer);
-  }, [document, hasStartedEditing]);
+  }, [document, hasStartedEditing, autosaveStatus === 'error']);
+
+  // Flush unsaved draft on tab hide/close — data loss prevention
+  useEffect(() => {
+    const flush = () => {
+      if (!latestEditingRef.current) return;
+      try {
+        void saveDraft({
+          revision: ++autosaveRev.current,
+          savedAt: new Date().toISOString(),
+          document: latestDocRef.current,
+          hasStartedEditing: latestEditingRef.current,
+        });
+      } catch { /* best effort */ }
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
 
   // ---------- Draft recovery (offer restore after refresh / reopen) ----------
   useEffect(() => {
@@ -365,7 +416,13 @@ function AppShell() {
         calc,
         status: (existing?.status as SavedDocument['status']) ||
           (document.type === 'invoice' ? 'unpaid' : document.type === 'receipt' ? 'issued' : 'issued'),
-        payments: existing?.payments || [],
+        // Merge payments recorded in the editor with any payments saved earlier
+        // on this document (union by id, editor wins on conflicts).
+        payments: (() => {
+          const byId = new Map((existing?.payments || []).map((p) => [p.id, p]));
+          for (const p of toPaymentRecords(document.payments || [])) byId.set(p.id, p);
+          return Array.from(byId.values());
+        })(),
         clientId: existing?.clientId || null,
         clientName: document.customer.company || document.customer.name || '',
         issueDate: document.meta.date || new Date().toISOString().slice(0, 10),
@@ -609,6 +666,7 @@ function AppShell() {
               onSaveToHistory={() => void handleSaveToHistory()}
               saveBusy={saveBusy}
               autosaveStatus={autosaveStatus}
+              onRetrySave={() => void retryDraftSave()}
               onOpenPreview={() => setActiveTab('preview')}
             />
           )}

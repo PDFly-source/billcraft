@@ -6,6 +6,8 @@ import { DocumentModel } from '@/types/document';
 import { calculateDocument, calculateItemRow } from '@/lib/calculations';
 import { formatCurrency } from '@/lib/currency';
 import { generateUPIString, generateQRCodeDataUrl } from '@/lib/upi';
+import { paymentSummary } from '@/lib/finance';
+import { validatePaymentLink } from '@/lib/validation';
 import { getThemeColor, getFontStack } from '@/lib/themes';
 import Image from 'next/image';
 
@@ -271,6 +273,22 @@ function renderModern(
                 <span className="text-[#6D6879]">Place of Supply:</span>{' '}
                 <span className="font-medium">{doc.meta.placeOfSupply}</span>
               </p>
+            )}
+            {doc.meta.ewayBillNumber && (
+              <p>
+                <span className="text-[#6D6879]">E-way Bill No:</span>{' '}
+                <span className="font-mono font-medium">{doc.meta.ewayBillNumber}</span>
+              </p>
+            )}
+            {(doc.meta.customFields?.length ?? 0) > 0 && (
+              <div className="mt-1">
+                {doc.meta.customFields!.filter((f) => f.label.trim()).map((f) => (
+                  <p key={f.id}>
+                    <span className="text-[#6D6879]">{f.label}:</span>{' '}
+                    <span className="font-medium">{f.value}</span>
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -1062,6 +1080,32 @@ function renderTotalsBox(
         </span>
       </div>
 
+      {/* Recorded payments summary — advances reduce the balance shown */}
+      {(doc.payments?.length ?? 0) > 0 && (() => {
+        const ps = paymentSummary(Math.round(calc.grandTotal * 100), doc.payments || []);
+        return (
+          <div className="space-y-1 pt-1.5 border-t border-[#E7E0EE]">
+            <div className="flex justify-between text-emerald-700">
+              <span>Paid / Advance</span>
+              <span className="font-bold">−{formatCurrency(ps.paidMinor / 100, doc.currency)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-[#17151F]">
+              <span className="uppercase tracking-wider text-[10px]">Balance Due</span>
+              <span className="font-black">{formatCurrency(ps.balanceMinor / 100, doc.currency)}</span>
+            </div>
+            <div
+              className={`inline-block px-1.5 py-0.5 rounded-full text-[9px] font-extrabold border ${
+                ps.status === 'PAID'
+                  ? 'bg-emerald-100 border-emerald-400 text-emerald-800'
+                  : 'bg-amber-100 border-amber-400 text-amber-800'
+              }`}
+            >
+              {ps.status}
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="text-[10px] text-[#6D6879] italic pt-1 border-t border-[#E7E0EE]">
         {calc.amountInWords}
       </div>
@@ -1114,7 +1158,40 @@ function renderPaymentAndQR(
             </div>
           )}
 
+          {/* External payment link — only rendered when it passes the same
+              https:// validation used in the editor; never treated as proof of payment */}
+          {doc.payment.showPaymentLink && doc.payment.paymentLink && validatePaymentLink(doc.payment.paymentLink).valid && (
+            <div className="mt-1.5">
+              <a
+                href={doc.payment.paymentLink}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="inline-block font-bold underline break-all"
+                style={{ color: theme.primary }}
+              >
+                Pay online: {doc.payment.paymentLink}
+              </a>
+            </div>
+          )}
+
           {doc.payment.notes && <p className="text-[11px] text-[#6D6879] mt-1 italic">{doc.payment.notes}</p>}
+
+          {/* Payments received against this document */}
+          {(doc.payments?.length ?? 0) > 0 && (
+            <div className="mt-1.5 pt-1.5 border-t border-[#E7E0EE]/70">
+              <span className="text-[10px] font-bold text-[#17151F] uppercase tracking-wider block mb-0.5">
+                Payments Received
+              </span>
+              <ul className="space-y-0.5">
+                {(doc.payments || []).map((p) => (
+                  <li key={p.id} className="text-[10px] text-[#6D6879]">
+                    <b className="text-[#17151F]">{formatCurrency(p.amountMinor / 100, doc.currency)}</b> · {p.date} · {p.method}
+                    {p.reference ? ` · ref ${p.reference}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Client-Side QR Code */}
@@ -1155,6 +1232,14 @@ function renderDocumentSpecifics(doc: DocumentModel) {
   }
   if (doc.type === 'delivery_challan') {
     rows.push({ label: 'Received By', value: doc.meta.receivedBy || '__________________' });
+  }
+  if ((doc.type === 'invoice' || doc.type === 'delivery_challan') && doc.meta.ewayBillNumber) {
+    rows.push({ label: 'E-way Bill No', value: doc.meta.ewayBillNumber });
+  }
+  if ((doc.meta.customFields?.length ?? 0) > 0) {
+    for (const f of doc.meta.customFields!.filter((x) => x.label.trim())) {
+      rows.push({ label: f.label, value: f.value || '—' });
+    }
   }
   if (rows.length === 0) return null;
   return (

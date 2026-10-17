@@ -159,3 +159,43 @@ describe('drafts, images, kv, data management', () => {
     expect(counts).toEqual({ clients: 0, products: 0, documents: 0, images: 0 });
   });
 });
+
+describe('Phase 3: bank accounts & my clauses (kv collections)', () => {
+  test('bank account save, list, update, delete', async () => {
+    const a = await repo.saveBankAccount({ nickname: 'HDFC Current', bankName: 'HDFC', accountNumber: '123456', ifsc: 'hdfc0001234' });
+    expect(a.ifsc).toBe('HDFC0001234');
+    const b = await repo.saveBankAccount({ nickname: 'ICICI' });
+    expect((await repo.listBankAccounts()).length).toBe(2);
+
+    const upd = await repo.saveBankAccount({ id: a.id, nickname: 'HDFC Main' });
+    expect(upd.nickname).toBe('HDFC Main');
+    expect(upd.createdAt).toBe(a.createdAt); // created stamp stable across updates
+    expect((await repo.listBankAccounts()).length).toBe(2);
+
+    await repo.deleteBankAccount(b.id);
+    expect((await repo.listBankAccounts()).map((x) => x.id)).toEqual([a.id]);
+  });
+
+  test('clause save, list, update, delete', async () => {
+    const c = await repo.saveClause({ title: 'Late payment', text: '1.5% monthly interest after due date.' });
+    expect((await repo.listClauses()).length).toBe(1);
+    const upd = await repo.saveClause({ id: c.id, title: 'Late payment policy', text: '2% after due date.' });
+    expect(upd.title).toBe('Late payment policy');
+    await repo.deleteClause(c.id);
+    expect((await repo.listClauses()).length).toBe(0);
+  });
+});
+
+describe('Phase 3: draft save revision guard (out-of-order writes)', () => {
+  test('a stale lower-revision write never clobbers a newer draft', async () => {
+    const mk = (revision: number) => ({ revision, savedAt: new Date().toISOString(), hasStartedEditing: true } as Parameters<typeof repo.saveDraft>[0]);
+    expect(await repo.saveDraft(mk(3))).toBe(true);
+    // an in-flight older write resolves late — it must be rejected
+    expect(await repo.saveDraft(mk(2))).toBe(false);
+    const d = await repo.getDraft();
+    expect(d?.revision).toBe(3);
+    // a newer write still applies
+    expect(await repo.saveDraft(mk(4))).toBe(true);
+    expect((await repo.getDraft())?.revision).toBe(4);
+  });
+});

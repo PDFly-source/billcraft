@@ -137,6 +137,32 @@ export function performDocumentHealthCheck(doc: DocumentModel): HealthCheckResul
     isWarningOnly: true,
   });
 
+  // 8. Item discounts in range (blocking — garbage-in is not professionalism)
+  const badDiscount = doc.items.find((it) => itemDiscountError(it));
+  items.push({
+    id: 'item-discounts',
+    label: 'Discount Values',
+    passed: !badDiscount,
+    message: badDiscount
+      ? `Item "${badDiscount.name || 'unnamed'}": ${itemDiscountError(badDiscount)}`
+      : 'All item discounts valid',
+    fieldTarget: 'items-section',
+  });
+  if (badDiscount) blockingErrors.push(itemDiscountError(badDiscount) as string);
+
+  // 9. Payment link well-formed when displayed (blocking only when it would render broken)
+  if (doc.payment.showPaymentLink && (doc.payment.paymentLink || '').trim() !== '') {
+    const linkCheck = validatePaymentLink(doc.payment.paymentLink || '');
+    items.push({
+      id: 'payment-link',
+      label: 'Payment Link',
+      passed: linkCheck.valid,
+      message: linkCheck.valid ? 'Valid https:// payment link' : linkCheck.error || 'Invalid payment link',
+      fieldTarget: 'payment-section',
+    });
+    if (!linkCheck.valid) blockingErrors.push(linkCheck.error || 'Fix the payment link before exporting.');
+  }
+
   const passedCount = items.filter(i => i.passed).length;
   const score = Math.round((passedCount / items.length) * 100);
   const isReady = blockingErrors.length === 0;

@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { DocumentMeta, DocumentType } from '@/types/document';
-import { Calendar, Hash, FileText, Clock, Truck } from 'lucide-react';
+import { DocumentMeta, DocumentType, CustomField } from '@/types/document';
+import { Calendar, Hash, FileText, Clock, Truck, Plus, X, Map } from 'lucide-react';
 
 interface DocumentMetaFormProps {
   meta: DocumentMeta;
@@ -294,6 +294,96 @@ export const DocumentMetaForm: React.FC<DocumentMetaFormProps> = ({ meta, type, 
           </div>
         </div>
       )}
+      {/* E-way bill number (invoices & challans) — format-validated only, no government check */}
+      {(type === 'invoice' || type === 'delivery_challan') && (
+        <div className="pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                E-way Bill Number (optional)
+              </label>
+              <div className="relative">
+                <input
+                  id="meta-eway"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={12}
+                  value={meta.ewayBillNumber || ''}
+                  onChange={(e) => onChange({ ewayBillNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 12) })}
+                  placeholder="12-digit e-way bill number"
+                  className="w-full pl-9 pr-3 py-2 text-sm font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+                />
+                <Map className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 italic mt-1">
+                Reference only — BillCraft does not validate this against the e-way bill portal.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom additional fields (compact when unused) */}
+      <div className="pt-1 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Additional Fields (optional)</span>
+          <button
+            type="button"
+            onClick={() => {
+              const fields = [...(meta.customFields || [])];
+              if (fields.length >= 6) return;
+              fields.push({ id: `cf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, label: '', value: '' });
+              onChange({ customFields: fields });
+            }}
+            disabled={(meta.customFields || []).length >= 6}
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-[#593C8F] dark:text-[#A8D5BA] hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-3 h-3" /> Add Field
+          </button>
+        </div>
+        {(meta.customFields || []).map((f, i) => {
+          const fields = meta.customFields || [];
+          return (
+            <div key={f.id} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={f.label}
+                maxLength={40}
+                onChange={(e) => {
+                  const next = [...fields];
+                  next[i] = { ...f, label: e.target.value };
+                  onChange({ customFields: next });
+                }}
+                placeholder="Label (e.g. Project Code)"
+                aria-label={`Custom field ${i + 1} label`}
+                className="w-2/5 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+              <input
+                type="text"
+                value={f.value}
+                maxLength={120}
+                onChange={(e) => {
+                  const next = [...fields];
+                  next[i] = { ...f, value: e.target.value };
+                  onChange({ customFields: next });
+                }}
+                placeholder="Value"
+                aria-label={`Custom field ${i + 1} value`}
+                className="flex-1 px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#593C8F] dark:focus:ring-[#7B5BB8] text-slate-900 dark:text-slate-100"
+              />
+              <button
+                type="button"
+                onClick={() => onChange({ customFields: fields.filter((_, j) => j !== i) })}
+                aria-label={`Remove custom field ${i + 1}`}
+                title="Remove field"
+                className="p-1.5 rounded text-slate-400 hover:text-rose-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

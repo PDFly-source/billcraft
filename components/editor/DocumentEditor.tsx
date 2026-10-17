@@ -10,6 +10,8 @@ import {
   prettyDocType,
 } from '@/types/document';
 import { performDocumentHealthCheck } from '@/lib/validation';
+import { createBlankItem, newItemId } from '@/lib/item-ops';
+import { paymentSummary } from '@/lib/finance';
 import { useLocalData } from '@/hooks/useLocalData';
 import { ClientPickerModal, ProductPickerModal } from '@/components/data/Pickers';
 import { findDuplicateClient, getClient, getProduct } from '@/lib/db/repository';
@@ -36,6 +38,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
+  ArrowUp,
+  ArrowDown,
   ArrowRightLeft,
   Copy,
   RotateCcw,
@@ -43,6 +47,8 @@ import {
   Palette,
   Bookmark,
   Save,
+  Check,
+  CloudOff,
   Loader2 as SaveSpinner,
 } from 'lucide-react';
 
@@ -55,7 +61,8 @@ interface DocumentEditorProps {
   onOpenPreview?: () => void;
   onSaveToHistory?: () => void;
   saveBusy?: boolean;
-  autosaveStatus?: 'idle' | 'saving' | 'saved' | 'error';
+  autosaveStatus?: 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
+  onRetrySave?: () => void;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
@@ -68,6 +75,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onSaveToHistory,
   saveBusy = false,
   autosaveStatus = 'idle',
+  onRetrySave,
 }) => {
   const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false);
   const [isHealthCheckOpen, setIsHealthCheckOpen] = useState(false);
@@ -170,22 +178,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }, 100);
   };
 
-  // Add Item
+  // Add Item — blank row, focused, persisted (requirement 3E)
   const handleAddNewItem = () => {
-    const newItem: DocumentItem = {
-      id: `item_${Date.now()}`,
-      name: 'Professional Service',
-      description: 'Standard consulting service',
-      hsn: '998314',
-      quantity: 1,
-      unit: 'service',
-      rate: '2500',
-      discountType: 'percent',
-      discountValue: 0,
-      taxRate: doc.tax.mode === 'gst' ? 18 : 0,
-    };
+    const newItem = createBlankItem(doc.tax.mode === 'gst');
     onUpdateDocument({ ...doc, items: [...doc.items, newItem] });
-    onShowToast('New item added');
+    requestAnimationFrame(() => {
+      const el = window.document.querySelector(`#item-name-${CSS.escape(newItem.id)}`);
+      (el as HTMLElement | null)?.focus();
+      el?.scrollIntoView({ block: 'nearest' });
+    });
   };
 
   // Export PDF Handler
@@ -253,7 +254,30 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               <b className="text-[#17151F] dark:text-[#F8F5FC] text-sm">
                 {prettyDocType(doc.type)}
               </b>
-              <span className="bdg g text-[9px]">Draft</span>
+              {/* Real-time draft save indicator (accurate, tracks persistence) */}
+              <span
+                aria-live="polite"
+                title={
+                  autosaveStatus === 'saved' ? 'Draft saved to this device' :
+                  autosaveStatus === 'saving' ? 'Saving draft…' :
+                  autosaveStatus === 'error' ? 'Draft save failed — tap Retry' :
+                  'You have unsaved changes'
+                }
+                className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                  autosaveStatus === 'saved'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                    : autosaveStatus === 'saving'
+                      ? 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500'
+                      : autosaveStatus === 'error'
+                        ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-300'
+                        : 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                }`}
+              >
+                {autosaveStatus === 'saved' && <><Check className="w-2.5 h-2.5" />Saved</>}
+                {autosaveStatus === 'saving' && <><SaveSpinner className="w-2.5 h-2.5 animate-spin" />Saving…</>}
+                {autosaveStatus === 'error' && <><CloudOff className="w-2.5 h-2.5" />Save failed</>}
+                {(autosaveStatus === 'unsaved' || autosaveStatus === 'idle') && <>Unsaved</>}
+              </span>
             </div>
 
             <div className="row relative" style={{ gap: '10px' }}>
@@ -298,7 +322,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] text-[#6D6879]">
                         {autosaveStatus === 'saving' && (<><SaveSpinner className="w-3 h-3 animate-spin" /> Draft saving…</>)}
                         {autosaveStatus === 'saved' && (<><Save className="w-3 h-3 text-emerald-600" /> Draft saved locally</>)}
-                        {autosaveStatus === 'error' && <span className="text-red-500">Draft save failed — storage full?</span>}
+                        {autosaveStatus === 'error' && (
+                          <button
+                            type="button"
+                            onClick={() => (onRetrySave ? onRetrySave() : undefined)}
+                            className="text-red-500 font-bold hover:underline"
+                          >
+                            Draft save failed — storage full? Tap to retry
+                          </button>
+                        )}
                       </div>
                       <div className="border-t border-[#E7E0EE] dark:border-[#302B38] my-1" />
                     </>
@@ -466,6 +498,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </button>
             </div>
             <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={isEditingBusiness}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsEditingBusiness(!isEditingBusiness); } }}
               onClick={() => setIsEditingBusiness(!isEditingBusiness)}
               className="card cursor-pointer hover:border-[#593C8F] transition"
               style={{ padding: '10px 12px', lineHeight: 1.5 }}
@@ -505,6 +541,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </button>
             </div>
             <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={isEditingCustomer}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsEditingCustomer(!isEditingCustomer); } }}
               onClick={() => setIsEditingCustomer(!isEditingCustomer)}
               className="f cursor-pointer hover:border-[#593C8F] transition"
             >
@@ -545,6 +585,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               </button>
             </div>
             <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={isEditingMeta}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsEditingMeta(!isEditingMeta); } }}
               onClick={() => setIsEditingMeta(!isEditingMeta)}
               className="card row sp cursor-pointer hover:border-[#593C8F] transition"
               style={{ padding: '9px 12px' }}
@@ -698,9 +742,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           <div className="space-y-1.5 pt-1">
             {/* Tax Settings Toggle */}
             <div className="card p-2.5">
-              <div
+              <button
+                type="button"
+                aria-expanded={isEditingTax}
+                aria-controls="tax-section-panel"
                 onClick={() => setIsEditingTax(!isEditingTax)}
-                className="row sp cursor-pointer"
+                className="row sp cursor-pointer w-full text-left"
               >
                 <div className="row">
                   <span className="ic" style={{ width: '26px', height: '26px', borderRadius: '8px' }}>
@@ -709,7 +756,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   <b className="text-xs text-[#17151F] dark:text-[#F8F5FC]">Tax & Discount Setup</b>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-[#6D6879] transition ${isEditingTax ? 'rotate-180' : ''}`} />
-              </div>
+              </button>
               {isEditingTax && (
                 <div className="pt-3 border-t border-[#E7E0EE] dark:border-[#302B38] mt-2">
                   <TaxDiscountEditor
@@ -728,9 +775,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
             {/* Payment & UPI QR Toggle */}
             <div className="card p-2.5">
-              <div
+              <button
+                type="button"
+                aria-expanded={isEditingPayment}
+                aria-controls="payment-section-panel"
                 onClick={() => setIsEditingPayment(!isEditingPayment)}
-                className="row sp cursor-pointer"
+                className="row sp cursor-pointer w-full text-left"
               >
                 <div className="row">
                   <span className="ic mt" style={{ width: '26px', height: '26px', borderRadius: '8px' }}>
@@ -739,14 +789,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   <b className="text-xs text-[#17151F] dark:text-[#F8F5FC]">Payment & UPI QR</b>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-[#6D6879] transition ${isEditingPayment ? 'rotate-180' : ''}`} />
-              </div>
+              </button>
               {isEditingPayment && (
-                <div className="pt-3 border-t border-[#E7E0EE] dark:border-[#302B38] mt-2">
+                <div id="payment-section-panel" className="pt-3 border-t border-[#E7E0EE] dark:border-[#302B38] mt-2">
                   <PaymentEditor
                     payment={doc.payment}
                     grandTotal={calcs.grandTotal}
+                    grandTotalMinor={Math.round(calcs.grandTotal * 100)}
                     businessName={doc.business.name}
                     onChange={(upd) => onUpdateDocument({ ...doc, payment: { ...doc.payment, ...upd } })}
+                    payments={doc.payments || []}
+                    onPaymentsChange={(payments) => onUpdateDocument({ ...doc, payments })}
+                    paymentsEnabled={doc.type === 'invoice' || doc.type === 'receipt' || doc.type === 'proforma'}
+                    onShowToast={onShowToast}
                   />
                 </div>
               )}
@@ -754,9 +809,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
             {/* Signature Toggle */}
             <div className="card p-2.5">
-              <div
+              <button
+                type="button"
+                aria-expanded={isEditingSignature}
+                aria-controls="signature-section-panel"
                 onClick={() => setIsEditingSignature(!isEditingSignature)}
-                className="row sp cursor-pointer"
+                className="row sp cursor-pointer w-full text-left"
               >
                 <div className="row">
                   <span className="ic" style={{ width: '26px', height: '26px', borderRadius: '8px' }}>
@@ -765,7 +823,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   <b className="text-xs text-[#17151F] dark:text-[#F8F5FC]">Signature / Stamp</b>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-[#6D6879] transition ${isEditingSignature ? 'rotate-180' : ''}`} />
-              </div>
+              </button>
               {isEditingSignature && (
                 <div className="pt-3 border-t border-[#E7E0EE] dark:border-[#302B38] mt-2">
                   <SignatureEditor
@@ -779,9 +837,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
             {/* Notes & Terms Toggle */}
             <div className="card p-2.5">
-              <div
+              <button
+                type="button"
+                aria-expanded={isEditingNotes}
+                aria-controls="notes-section-panel"
                 onClick={() => setIsEditingNotes(!isEditingNotes)}
-                className="row sp cursor-pointer"
+                className="row sp cursor-pointer w-full text-left"
               >
                 <div className="row">
                   <span className="ic" style={{ width: '26px', height: '26px', borderRadius: '8px' }}>
@@ -790,7 +851,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                   <b className="text-xs text-[#17151F] dark:text-[#F8F5FC]">Notes & Clauses</b>
                 </div>
                 <ChevronDown className={`w-3.5 h-3.5 text-[#6D6879] transition ${isEditingNotes ? 'rotate-180' : ''}`} />
-              </div>
+              </button>
               {isEditingNotes && (
                 <div className="pt-3 border-t border-[#E7E0EE] dark:border-[#302B38] mt-2">
                   <NotesTermsEditor
@@ -804,12 +865,62 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
           </div>
 
-          {/* 7. Action Buttons per Screen 04 */}
-          <div className="row pt-2" style={{ gap: '8px' }}>
+          {/* 7. Action Buttons — sticky bottom bar on mobile (3D), inline on desktop. */}
+          <div className="hidden lg:flex row pt-2" style={{ gap: '8px' }}>
             <button
               type="button"
               onClick={() => (onOpenPreview ? onOpenPreview() : setIsFullscreenPreviewOpen(true))}
               className="btn o flex-1"
+              aria-label="Open preview"
+            >
+              <BillCraftIcon name="eye" />
+              <span>Preview</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportPDF}
+              disabled={isExporting}
+              className="btn flex-[1.2]"
+              aria-label="Export PDF"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Exporting…</span>
+                </>
+              ) : (
+                <>
+                  <BillCraftIcon name="file-preview-outline" />
+                  <span>Export PDF</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* spacer so the sticky bar never covers the last form card on mobile */}
+          <div className="lg:hidden" style={{ height: '76px' }} aria-hidden="true" />
+        </div>
+
+        {/* Sticky Preview/Export bar (mobile only; desktop keeps inline buttons) */}
+        <div
+          className="lg:hidden fixed left-0 right-0 z-40 md:hidden"
+          style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div
+            className="row"
+            style={{
+              gap: '8px',
+              padding: '10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px',
+              background: 'color-mix(in srgb, var(--bg2, #FAF6EE) 94%, transparent)',
+              backdropFilter: 'blur(10px)',
+              borderTop: '1px solid var(--bd)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => (onOpenPreview ? onOpenPreview() : setIsFullscreenPreviewOpen(true))}
+              className="btn o flex-1"
+              aria-label="Open preview"
             >
               <BillCraftIcon name="eye" />
               <span>Preview</span>
@@ -820,6 +931,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               onClick={handleExportPDF}
               disabled={isExporting}
               className="btn flex-[1.2]"
+              aria-label="Export PDF"
             >
               {isExporting ? (
                 <>
@@ -835,6 +947,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </button>
           </div>
         </div>
+
+
 
         {/* Right Column: Live A4 Preview Pane on Desktop */}
         <div className="hidden lg:block lg:col-span-6 sticky top-20">
