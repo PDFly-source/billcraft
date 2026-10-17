@@ -165,7 +165,7 @@ export const LivePreviewView: React.FC<LivePreviewViewProps> = ({
               <span className="lab" style={{ fontSize: '7.5px' }}>BILL TO</span>
               <div>
                 <b style={{ fontSize: '10px' }}>
-                  {doc.customer.company || doc.customer.name || 'Acme Solutions'}
+                  {doc.customer.company || doc.customer.name || 'Client Name'}
                 </b>
               </div>
             </div>

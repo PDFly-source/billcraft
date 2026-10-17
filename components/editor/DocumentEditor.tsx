@@ -502,12 +502,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               style={{ padding: '10px 12px', lineHeight: 1.5 }}
             >
               <b className="block text-xs text-[#17151F] dark:text-[#F8F5FC]">
-                {doc.business.name || 'BillCraft Studio'}
+                {doc.business.name || 'Your business name'}
               </b>
               <div className="m" style={{ fontSize: '10.5px', color: 'var(--mut)' }}>
-                {doc.business.address || 'Nalbari, Assam'} · {doc.business.phone || '+91 XXXXX XXXXX'}
+                {doc.business.address || 'Add your business address'} · {doc.business.phone || 'Add phone'}
                 <br />
-                GSTIN: {doc.business.gstin || 'XXXXXXXX'}
+                GSTIN: {doc.business.gstin || '—'}
               </div>
             </div>
 
@@ -545,7 +545,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             >
               <small>CUSTOMER</small>
               <b className="text-xs text-[#17151F] dark:text-[#F8F5FC] block">
-                {doc.customer.name || doc.customer.company || 'Acme Solutions'}
+                {doc.customer.name || doc.customer.company || 'Add customer details'}
               </b>
               {doc.customer.address && (
                 <div className="m" style={{ fontSize: '10px', color: 'var(--mut)', marginTop: '2px' }}>
