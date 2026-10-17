@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
+import { WatermarkSettings,
   DocumentModel,
   DocumentType,
   TemplateId,
@@ -469,16 +469,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <input
                   type="checkbox"
                   checked={Boolean(doc.watermark?.enabled)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const base: WatermarkSettings = doc.watermark || { enabled: false, text: '', opacity: 0.08, position: 'center', rotation: -30, source: 'text' };
                     onUpdateDocument({
                       ...doc,
                       watermark: {
-                        ...(doc.watermark || { text: '', opacity: 0.08, position: 'center', rotation: -30 }),
-                        ...(doc.watermark || { source: 'text' as const }),
+                        ...base,
+                        // Silent-fail guard: an enabled text watermark with no
+                        // text renders nothing — fall back to a sensible default
+                        // the first time the toggle is switched on.
+                        text: base.text?.trim() ? base.text : 'DRAFT',
+                        source: base.source || 'text',
                         enabled: e.target.checked,
                       },
-                    })
-                  }
+                    });
+                  }}
                 />
                 <span className="text-[10.5px] font-bold text-[#6D6879] dark:text-[#A39BB0]">Watermark (this document)</span>
               </label>
