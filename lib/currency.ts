@@ -1,4 +1,5 @@
 import { CurrencyCode, CurrencyConfig } from '@/types/document';
+import { getNumberGroupingPref, localeForGrouping, NumberGroupingPref } from '@/lib/format';
 
 export const CURRENCIES: Record<CurrencyCode, CurrencyConfig> = {
   INR: {
@@ -62,11 +63,19 @@ export const CURRENCIES: Record<CurrencyCode, CurrencyConfig> = {
 /**
  * Format number into currency string with symbol
  */
-export function formatCurrency(amount: number, currencyCode: CurrencyCode = 'INR'): string {
+export function formatCurrency(
+  amount: number,
+  currencyCode: CurrencyCode = 'INR',
+  grouping?: NumberGroupingPref,
+): string {
   const config = CURRENCIES[currencyCode] || CURRENCIES.INR;
   const num = isNaN(amount) ? 0 : amount;
+  // 'auto' keeps the currency's native grouping (backward compatible);
+  // an explicit choice overrides it for display only — amounts never change.
+  const group = grouping ?? getNumberGroupingPref();
+  const useIndian = group === 'auto' ? config.isIndianNumbering : group === 'indian';
 
-  if (config.isIndianNumbering) {
+  if (useIndian) {
     // Format with Indian lakhs & crores system
     const isNegative = num < 0;
     const absVal = Math.abs(num);
@@ -86,7 +95,7 @@ export function formatCurrency(amount: number, currencyCode: CurrencyCode = 'INR
 
   // Standard International formatting
   try {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(localeForGrouping(group, config.isIndianNumbering), {
       style: 'currency',
       currency: currencyCode,
       minimumFractionDigits: config.decimals,

@@ -13,8 +13,10 @@ import {
 import { BillCraftBackup, RestorePreview } from '@/types/local';
 import {
   Download, Upload, ShieldAlert, AlertTriangle, Check, X, Database,
-  HardDrive, Trash2, RotateCcw, FileJson,
+  HardDrive, Trash2, RotateCcw, FileJson, RefreshCw,
 } from 'lucide-react';
+import { getStorageStatus } from '@/lib/db/repository';
+import type { StorageStatus } from '@/types/local';
 
 const fmtBytes = (b: number) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : b > 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`);
 
@@ -245,6 +247,21 @@ export const DataManagementSection: React.FC<{ onShowToast: (m: string) => void 
   const [confirmAll, setConfirmAll] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
+  // live storage estimate (refreshable, browser-provided only)
+  const [est, setEst] = useState<StorageStatus | null>(storage);
+  const [storageBusy, setStorageBusy] = useState(false);
+
+  const refreshStorage = async () => {
+    setStorageBusy(true);
+    try {
+      const st = await getStorageStatus();
+      setEst(st);
+    } catch {
+      onShowToast('Could not read storage estimate');
+    } finally {
+      setStorageBusy(false);
+    }
+  };
 
   const CAT_LABEL = { clients: 'All clients', products: 'All products & services', documents: 'All saved documents & payments', images: 'All images (logos, signatures)' };
   const CAT_CONSEQ = {
@@ -284,6 +301,9 @@ export const DataManagementSection: React.FC<{ onShowToast: (m: string) => void 
     }
   };
 
+  const pct = est && est.usage != null && est.quota ? (est.usage / est.quota) * 100 : null;
+  const e: StorageStatus = est || { available: false, error: null, usage: null, quota: null };
+
   return (
     <div className="space-y-3">
       <div className="card p-3 space-y-2">
@@ -294,11 +314,38 @@ export const DataManagementSection: React.FC<{ onShowToast: (m: string) => void 
           <div className="row sp"><span className="text-[#6D6879] dark:text-[#A39BB0]">Documents</span><b className="text-[#17151F] dark:text-[#F8F5FC]">{counts?.documents ?? '…'}</b></div>
           <div className="row sp"><span className="text-[#6D6879] dark:text-[#A39BB0]">Images</span><b className="text-[#17151F] dark:text-[#F8F5FC]">{counts?.images ?? '…'}</b></div>
         </div>
-        <div className="row sp border-t border-[#EFE9F5] dark:border-[#2D2736] pt-2">
-          <span className="row" style={{ gap: 5 }}><HardDrive className="w-3.5 h-3.5 text-[#6D6879]" /><span className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0]">Storage used</span></span>
-          <span className="text-[9.5px] text-[#17151F] dark:text-[#F8F5FC]">
-            {storage?.usage != null ? `${fmtBytes(storage.usage)}${storage.quota ? ` of ~${fmtBytes(storage.quota)}` : ''}` : 'not reported by this browser'}
-          </span>
+        {/* Storage estimate — real browser figures only (Phase 4 Feature F) */}
+        <div className="border-t border-[#EFE9F5] dark:border-[#2D2736] pt-2 space-y-2">
+          <div className="row sp">
+            <span className="row" style={{ gap: 5 }}><HardDrive className="w-3.5 h-3.5 text-[#6D6879]" /><span className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0]">Origin storage (estimate)</span></span>
+            <button type="button" className="text-[#6D6879] hover:text-[#17151F] dark:hover:text-[#F8F5FC]" aria-label="Refresh storage estimate" onClick={() => void refreshStorage()}>
+              <RefreshCw className={`w-3.5 h-3.5 ${storageBusy ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          {e.usage != null ? (
+            <>
+              <div className="row sp">
+                <b className="text-[11px] text-[#17151F] dark:text-[#F8F5FC]">{fmtBytes(e.usage)}</b>
+                <span className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0]">
+                  {e.quota ? `of ~${fmtBytes(e.quota)} (${pct != null ? pct.toFixed(0) : '?'}%)` : 'quota unknown in this browser'}
+                </span>
+              </div>
+              {e.quota && pct != null && (
+                <div className="h-2 rounded-full bg-[#EFE9F5] dark:bg-[#2D2736] overflow-hidden" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label="Storage used percentage">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: pct >= 90 ? '#D93838' : pct >= 70 ? '#B07C1E' : '#593C8F' }} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0]">
+              {e.available ? 'This browser does not report storage estimates.' : `Storage unavailable: ${e.error || 'IndexedDB is unavailable'}`}
+            </div>
+          )}
+          <p className="text-[9px] text-[#6D6879] dark:text-[#A39BB0] leading-relaxed">
+            Figures come from the browser&apos;s Storage API (navigator.storage.estimate) and are approximate estimates. They cover the
+            entire origin — including other sites&apos; data under this origin and cached assets — not just BillCraft&apos;s records. BillCraft
+            does not impose or track its own storage limit.
+          </p>
         </div>
       </div>
 
@@ -358,7 +405,7 @@ export const DataManagementSection: React.FC<{ onShowToast: (m: string) => void 
 // ---------------- Privacy notice (Feature 7) ----------------
 
 export const PRIVACY_NOTICE_TEXT =
-  'Your BillCraft data is stored locally in this browser on this device. Clearing browser data or uninstalling the app may permanently erase your records. Export a backup regularly.';
+  'Your business data is stored on this device and in this browser. Clearing browser data, uninstalling the PWA, or losing access to this device may permanently remove your records. Export a backup regularly.';
 
 export const PrivacyNoticeCard: React.FC<{
   onExportBackup: () => void;

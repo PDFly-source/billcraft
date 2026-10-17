@@ -10,6 +10,7 @@ import { useLocalData } from '@/hooks/useLocalData';
 import { SavedDocument } from '@/types/local';
 import { formatCurrency } from '@/lib/currency';
 import { TrendingUp, CheckCircle2, Clock, AlertTriangle, FileText, ChevronRight, BarChart3 } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 
 export interface DashboardSectionProps {
   onOpenHistory: () => void;
@@ -132,7 +133,7 @@ export const DashboardSection: React.FC<DashboardSectionProps> = ({
                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#593C8F]/10 text-[#593C8F] dark:text-[#A8D5BA] shrink-0">{TYPE_LABEL[d.type] || d.type}</span>
                   <span className="text-[11px] font-bold text-[#17151F] dark:text-[#F8F5FC] truncate">{d.documentNumber}</span>
                 </div>
-                <div className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0] truncate">{d.clientName} • {d.issueDate}</div>
+                <div className="text-[9.5px] text-[#6D6879] dark:text-[#A39BB0] truncate">{d.clientName} • {formatDate(d.issueDate)}</div>
               </div>
               <div className="row shrink-0" style={{ gap: 4 }}>
                 <span className="text-[11px] font-bold text-[#17151F] dark:text-[#F8F5FC]">{formatCurrency((d.totalMinor || 0) / 100, d.document.currency)}</span>

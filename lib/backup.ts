@@ -20,10 +20,18 @@ import { kvGet, kvSet, getProfile, getDataCounts, listBankAccounts, listClauses,
 
 const MAX_BACKUP_BYTES = 60 * 1024 * 1024; // 60 MB safety limit
 
-export function backupFilename(): string {
-  const d = new Date();
+/**
+ * Auto-dated backup filename using the user's LOCAL date and time, with a
+ * seconds component so repeated exports never collide:
+ *   billcraft-backup-2026-10-17-134500.json
+ * Colons and other filename-hostile characters are avoided; the timestamp
+ * stays lexicographically sortable.
+ */
+export function backupFilename(now = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  return `BillCraft-Backup-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
+  const date = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  const time = `${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return `billcraft-backup-${date}-${time}.json`;
 }
 
 export async function buildBackup(): Promise<BillCraftBackup> {

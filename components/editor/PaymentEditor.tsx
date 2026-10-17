@@ -9,6 +9,7 @@ import { listBankAccounts, saveBankAccount, deleteBankAccount } from '@/lib/db/r
 import { BankAccountRecord } from '@/types/local';
 import { QrCode, Landmark, Banknote, CreditCard, FileCheck, Layers, Link2, Copy, Check, Plus, Trash2, Save } from 'lucide-react';
 import Image from 'next/image';
+import { formatDate, formatNumber } from '@/lib/format';
 
 interface PaymentEditorProps {
   payment: PaymentDetails;
@@ -35,7 +36,7 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: React.Component
   { id: 'other', label: 'Other', icon: Layers },
 ];
 
-const fmt = (minor: number) => (minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (minor: number) => formatNumber(minor / 100, undefined, true);
 
 export const PaymentEditor: React.FC<PaymentEditorProps> = ({
   payment,
@@ -516,7 +517,7 @@ export const PaymentEditor: React.FC<PaymentEditorProps> = ({
                 <li key={p.id} className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px]">
                   <div className="min-w-0">
                     <b className="font-mono">{currencySymbol}{fmt(p.amountMinor)}</b>
-                    <span className="text-slate-400"> · {p.date} · {p.method}</span>
+                    <span className="text-slate-400"> · {formatDate(p.date)} · {p.method}</span>
                     {p.reference && <span className="text-slate-400"> · ref {p.reference}</span>}
                   </div>
                   <button

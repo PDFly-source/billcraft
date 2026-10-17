@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { RecurringSection } from '@/components/data/RecurringSection';
+import { formatDate } from '@/lib/format';
 
 export interface HistoryViewProps {
   onOpenDocument: (doc: SavedDocument) => void;
@@ -230,7 +231,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                     <span className={`px-1.5 py-1 rounded-lg text-[9px] font-bold uppercase ${TYPE_COLOR[d.type] || 'bg-[#6D6879] text-white'} shrink-0`}>{TYPE_LABEL[d.type] || d.type}</span>
                     <div className="min-w-0">
                       <div className="text-[12px] font-bold text-[#17151F] dark:text-[#F8F5FC] truncate">{d.documentNumber}</div>
-                      <div className="text-[10px] text-[#6D6879] dark:text-[#A39BB0] truncate">{d.clientName || '—'} • {d.issueDate}</div>
+                      <div className="text-[10px] text-[#6D6879] dark:text-[#A39BB0] truncate">{d.clientName || '—'} • {formatDate(d.issueDate)}</div>
                     </div>
                   </div>
                   <div className="text-right shrink-0">

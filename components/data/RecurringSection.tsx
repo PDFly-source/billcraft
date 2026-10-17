@@ -16,6 +16,7 @@ import {
 import { formatCurrency } from '@/lib/currency';
 import { calculateDocument } from '@/lib/calculations';
 import { Repeat, Plus, RefreshCw, Pause, Play, Trash2, X, CalendarClock, Check } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 
 interface RecurringSectionProps {
   onShowToast: (m: string) => void;
@@ -139,7 +140,7 @@ export const RecurringSection: React.FC<RecurringSectionProps> = ({
                   <div className="min-w-0">
                     <p className="text-[11px] font-bold text-[#17151F] dark:text-[#F8F5FC] truncate">{s.name}</p>
                     <p className="text-[9px] text-[#6D6879] dark:text-[#A39BB0]">
-                      {FREQUENCY_LABEL[s.frequency]} · next {s.nextDueDate || '—'}
+                      {FREQUENCY_LABEL[s.frequency]} · next {formatDate(s.nextDueDate) || '—'}
                       {s.lastGeneratedDate && ` · last ${s.lastGeneratedDate}`}
                       {s.document.items?.length ? ` · ${s.document.items.length} item${s.document.items.length === 1 ? '' : 's'}` : ''}
                       {' · '}

@@ -11,6 +11,7 @@
  * We never claim an attachment was sent when only text sharing was possible.
  */
 import { DocumentModel, DocumentCalculations } from '@/types/document';
+import { formatDate, formatNumber } from '@/lib/format';
 
 export function normalizePhone(raw: string, defaultCountry = '91'): string {
   const digits = (raw || '').replace(/\D/g, '');
@@ -27,19 +28,19 @@ export function buildShareMessage(doc: DocumentModel, calc: DocumentCalculations
     doc.type === 'quotation' ? 'Quotation' :
     doc.type === 'receipt' ? 'Receipt' : 'Estimate';
   const name = (doc.customer.company || doc.customer.name || 'Valued Customer').trim();
-  const amount = calc.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const amount = formatNumber(calc.grandTotal, undefined, true);
   const business = (doc.business.name || 'BillCraft').trim();
   const lines = [
     `Dear ${name},`,
     ``,
-    `Please find attached ${typeLabel} *${doc.meta.documentNumber}* dated ${doc.meta.date}.`,
+    `Please find attached ${typeLabel} *${doc.meta.documentNumber}* dated ${formatDate(doc.meta.date)}.`,
     `Total amount: ${currencySymbol}${amount}.`,
   ];
   if (doc.type === 'quotation' && doc.meta.validUntil) {
-    lines.push(`Valid until: ${doc.meta.validUntil}.`);
+    lines.push(`Valid until: ${formatDate(doc.meta.validUntil)}.`);
   }
   if (doc.type === 'invoice' && doc.meta.dueDate) {
-    lines.push(`Payment due by: ${doc.meta.dueDate}.`);
+    lines.push(`Payment due by: ${formatDate(doc.meta.dueDate)}.`);
   }
   lines.push(``, `Thank you for your business!`, ``, `— ${business}`);
   return lines.join('\n');

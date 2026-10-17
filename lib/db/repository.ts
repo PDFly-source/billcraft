@@ -12,7 +12,7 @@ import {
   DocumentPreferences, DraftRecord, LOCAL_SCHEMA_VERSION, StorageStatus,
   PaymentRecord, DocumentStatus, BankAccountRecord, ClauseRecord,
   RecurringSeriesRecord } from '@/types/local';
-import { STORES, withStores, requestAll, requestByKey, putRecord, deleteRecord, clearStore, countStore, getDB } from './idb';
+import { STORES, withStores, withStore, requestAll, requestByKey, putRecord, deleteRecord, clearStore, countStore, getDB } from './idb';
 
 const norm = (s: string) => (s || '').trim().toLowerCase();
 
@@ -399,7 +399,7 @@ export async function deleteImage(id: string): Promise<void> {
   await deleteRecord(STORES.images, id);
 }
 
-// ---------- Numbering ----------
+// ---------- Numbering (Phase 4: configurable, duplicate-safe) ----------
 
 const prefixFor = (type: string, profile: BusinessProfileRecord): string => {
   switch (type) {
@@ -416,20 +416,105 @@ const prefixFor = (type: string, profile: BusinessProfileRecord): string => {
   }
 };
 
+/** User-facing numbering preferences (Phase 4). Stored in kv. */
+export interface NumberingPrefs {
+  padding: number;         // zero-pad width of the sequence, 1..10
+  autoIncrement: boolean;  // auto-assign the next number on document creation
+}
+
+export const DEFAULT_NUMBERING_PREFS: NumberingPrefs = { padding: 4, autoIncrement: true };
+
+export function normalizeNumberingPrefs(raw: Partial<NumberingPrefs> | undefined): NumberingPrefs {
+  const padding = Math.min(10, Math.max(1, Math.round(Number(raw?.padding))));
+  return {
+    padding: Number.isFinite(padding) ? padding : DEFAULT_NUMBERING_PREFS.padding,
+    autoIncrement: raw?.autoIncrement ?? DEFAULT_NUMBERING_PREFS.autoIncrement,
+  };
+}
+
+export async function getNumberingPrefs(): Promise<NumberingPrefs> {
+  return normalizeNumberingPrefs(await kvGet<Partial<NumberingPrefs>>('numbering-prefs'));
+}
+
+export async function saveNumberingPrefs(prefs: NumberingPrefs): Promise<NumberingPrefs> {
+  const clean = normalizeNumberingPrefs(prefs);
+  await kvSet('numbering-prefs', clean);
+  return clean;
+}
+
+/** True when a saved document already uses this exact number. */
+async function numberExists(candidate: string): Promise<boolean> {
+  const row = await withStore<{ documentNumber: string } | undefined>(STORES.documents, 'readonly', (s) =>
+    s.index('documentNumber').get(candidate),
+  );
+  return !!row;
+}
+
+/** Raw counter + start-number resolution shared by peek/next/set. */
+async function resolveNextSeq(type: string): Promise<number> {
+  const profile = (await getProfile()) || DEFAULT_PROFILE;
+  const current = (await kvGet<number>(`counter:${type}`)) ?? 0;
+  const start = type === 'invoice' ? Math.max(1, profile.invoiceStartNumber || 1) : 1;
+  return Math.max(current + 1, start);
+}
+
+/**
+ * Preview the number the NEXT document of this type would receive, WITHOUT
+ * consuming or reserving anything. Purely informational (Settings preview).
+ */
+export async function peekNextDocumentNumber(type: string): Promise<string> {
+  const [profile, prefs] = await Promise.all([getProfile(), getNumberingPrefs()]);
+  const p = profile || DEFAULT_PROFILE;
+  let seq = await resolveNextSeq(type);
+  // preview the same duplicate-safe value a real creation would get
+  const year = new Date().getFullYear();
+  let candidate = `${prefixFor(type, p)}-${year}-${String(seq).padStart(prefs.padding, '0')}`;
+  while (await numberExists(candidate)) {
+    seq += 1;
+    candidate = `${prefixFor(type, p)}-${year}-${String(seq).padStart(prefs.padding, '0')}`;
+  }
+  return candidate;
+}
+
+/**
+ * Point the sequence so the NEXT document number uses `next` (>= 1).
+ * Saved historical documents are never renumbered; this only affects the
+ * next allocation. When the profile's start number would override the
+ * choice (start wins in nextDocumentNumber), the start number is lowered to
+ * the chosen value so the user's setting actually takes effect.
+ */
+export async function setNextSequenceNumber(type: string, next: number): Promise<void> {
+  const n = Math.round(Number(next));
+  if (!Number.isFinite(n) || n < 1 || n > 99999999) throw new Error('Sequence must be a whole number between 1 and 99999999');
+  await kvSet(`counter:${type}`, n - 1);
+  if (type === 'invoice') {
+    const profile = await getProfile();
+    if (profile && Math.max(1, profile.invoiceStartNumber || 1) > n) {
+      await saveProfile({ ...profile, invoiceStartNumber: n });
+    }
+  }
+}
+
 /**
  * Deterministic document numbering: reads the per-type counter, ensures it is
- * at least the profile's starting number, bumps it atomically enough for a
- * single-user local app, and returns e.g. INV-2026-0007.
+ * at least the profile's starting number, skips numbers already used by a
+ * saved document (duplicate prevention), persists the consumed value and
+ * returns e.g. INV-2026-0007. The number is consumed at document CREATION
+ * time; a document that is never saved does not corrupt anything — the
+ * counter simply moves on, and gaps are possible but never duplicates.
  */
 export async function nextDocumentNumber(type: string): Promise<string> {
-  const profile = (await getProfile()) || DEFAULT_PROFILE;
-  const key = `counter:${type}`;
-  const current = (await kvGet<number>(key)) ?? 0;
-  const start = type === 'invoice' ? Math.max(1, profile.invoiceStartNumber || 1) : 1;
-  const next = Math.max(current + 1, start);
-  await kvSet(key, next);
+  const [profile, prefs] = await Promise.all([getProfile(), getNumberingPrefs()]);
+  const p = profile || DEFAULT_PROFILE;
+  let next = await resolveNextSeq(type);
   const year = new Date().getFullYear();
-  return `${prefixFor(type, profile)}-${year}-${String(next).padStart(4, '0')}`;
+  let candidate = `${prefixFor(type, p)}-${year}-${String(next).padStart(prefs.padding, '0')}`;
+  while (await numberExists(candidate)) {
+    next += 1;
+    candidate = `${prefixFor(type, p)}-${year}-${String(next).padStart(prefs.padding, '0')}`;
+  }
+  await kvSet(`counter:${type}`, next);
+  return candidate;
 }
 
 // ---------- Storage status ----------

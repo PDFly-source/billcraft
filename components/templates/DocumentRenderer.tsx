@@ -10,6 +10,10 @@ import { paymentSummary } from '@/lib/finance';
 import { validatePaymentLink } from '@/lib/validation';
 import { getThemeColor, getFontStack } from '@/lib/themes';
 import Image from 'next/image';
+import { formatDate } from '@/lib/format';
+
+/** Display dates via the user's date-format preference (Phase 4). */
+const fd = (d?: string) => formatDate(d);
 
 interface DocumentRendererProps {
   document: DocumentModel;
@@ -254,12 +258,12 @@ function renderModern(
           <div className="text-xs text-[#6D6879] space-y-1">
             <p>
               <span className="text-[#6D6879]">Date:</span>{' '}
-              <span className="font-medium">{doc.meta.date || '—'}</span>
+              <span className="font-medium">{fd(doc.meta.date) || '—'}</span>
             </p>
             {doc.meta.dueDate && (
               <p>
                 <span className="text-[#6D6879]">Due Date:</span>{' '}
-                <span className="font-medium">{doc.meta.dueDate}</span>
+                <span className="font-medium">{fd(doc.meta.dueDate)}</span>
               </p>
             )}
             {doc.meta.referenceNumber && (
@@ -319,7 +323,7 @@ function renderModern(
             </span>
             <p className="text-[#17151F] font-medium">{doc.meta.paymentTerms}</p>
             {doc.meta.validUntil && (
-              <p className="text-[#6D6879] mt-1">Valid Until: {doc.meta.validUntil}</p>
+              <p className="text-[#6D6879] mt-1">Valid Until: {fd(doc.meta.validUntil)}</p>
             )}
           </div>
         )}
@@ -392,12 +396,12 @@ function renderClassic(
         <div className="border border-[#E7E0EE] p-3 space-y-1">
           <p className="flex justify-between">
             <span className="text-[#6D6879]">Date:</span>
-            <span className="font-bold">{doc.meta.date}</span>
+            <span className="font-bold">{fd(doc.meta.date)}</span>
           </p>
           {doc.meta.dueDate && (
             <p className="flex justify-between">
               <span className="text-[#6D6879]">Due Date:</span>
-              <span className="font-bold">{doc.meta.dueDate}</span>
+              <span className="font-bold">{fd(doc.meta.dueDate)}</span>
             </p>
           )}
           {doc.meta.referenceNumber && (
@@ -465,8 +469,8 @@ function renderMinimal(
           {doc.customer.gstin && <p className="text-[#6D6879]">GSTIN: {doc.customer.gstin}</p>}
         </div>
         <div className="text-right space-y-1">
-          <p><span className="text-[#6D6879]">Date:</span> {doc.meta.date}</p>
-          {doc.meta.dueDate && <p><span className="text-[#6D6879]">Due:</span> {doc.meta.dueDate}</p>}
+          <p><span className="text-[#6D6879]">Date:</span> {fd(doc.meta.date)}</p>
+          {doc.meta.dueDate && <p><span className="text-[#6D6879]">Due:</span> {fd(doc.meta.dueDate)}</p>}
           {doc.meta.referenceNumber && <p><span className="text-[#6D6879]">Ref:</span> {doc.meta.referenceNumber}</p>}
         </div>
       </div>
@@ -515,8 +519,8 @@ function renderCorporate(
 
       {/* Meta Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#FAF6EE] p-3 rounded text-xs">
-        <div><span className="text-[#6D6879] block font-semibold">ISSUE DATE</span><span className="font-bold">{doc.meta.date}</span></div>
-        <div><span className="text-[#6D6879] block font-semibold">DUE DATE</span><span className="font-bold">{doc.meta.dueDate || '—'}</span></div>
+        <div><span className="text-[#6D6879] block font-semibold">ISSUE DATE</span><span className="font-bold">{fd(doc.meta.date)}</span></div>
+        <div><span className="text-[#6D6879] block font-semibold">DUE DATE</span><span className="font-bold">{fd(doc.meta.dueDate) || '—'}</span></div>
         <div><span className="text-[#6D6879] block font-semibold">REF NUMBER</span><span className="font-bold">{doc.meta.referenceNumber || '—'}</span></div>
         <div><span className="text-[#6D6879] block font-semibold">SUPPLY STATE</span><span className="font-bold">{doc.meta.placeOfSupply || '—'}</span></div>
       </div>
@@ -570,7 +574,7 @@ function renderElegant(
             {docTitle}
           </span>
           <p className="text-lg font-serif font-bold text-[#17151F]">№ {doc.meta.documentNumber}</p>
-          <p className="text-xs text-[#6D6879]">{doc.meta.date}</p>
+          <p className="text-xs text-[#6D6879]">{fd(doc.meta.date)}</p>
         </div>
       </div>
 
@@ -622,7 +626,7 @@ function renderBold(
         <div className="text-left sm:text-right">
           <div className="text-xs text-[#6D6879] uppercase font-semibold">Document No.</div>
           <div className="text-xl font-black font-mono text-white">{doc.meta.documentNumber}</div>
-          <div className="text-xs text-[#6D6879] mt-1">Date: {doc.meta.date}</div>
+          <div className="text-xs text-[#6D6879] mt-1">Date: {fd(doc.meta.date)}</div>
         </div>
       </div>
 
@@ -634,7 +638,7 @@ function renderBold(
           <p className="text-[#6D6879]">{doc.customer.address}</p>
         </div>
         <div className="text-right space-y-1">
-          {doc.meta.dueDate && <p><span className="text-[#6D6879]">Due:</span> <span className="font-bold">{doc.meta.dueDate}</span></p>}
+          {doc.meta.dueDate && <p><span className="text-[#6D6879]">Due:</span> <span className="font-bold">{fd(doc.meta.dueDate)}</span></p>}
           {doc.customer.gstin && <p><span className="text-[#6D6879]">GSTIN:</span> <span className="font-bold">{doc.customer.gstin}</span></p>}
         </div>
       </div>
@@ -685,8 +689,8 @@ function renderGSTPro(
         </div>
         <div className="pl-2 space-y-1">
           <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Invoice No:</span> <span className="font-bold">{doc.meta.documentNumber}</span></p>
-          <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Invoice Date:</span> <span>{doc.meta.date}</span></p>
-          <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Due Date:</span> <span>{doc.meta.dueDate || '—'}</span></p>
+          <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Invoice Date:</span> <span>{fd(doc.meta.date)}</span></p>
+          <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Due Date:</span> <span>{fd(doc.meta.dueDate) || '—'}</span></p>
           <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Place of Supply:</span> <span className="font-bold">{doc.meta.placeOfSupply || doc.customer.placeOfSupply || '—'}</span></p>
           <p className="flex justify-between"><span className="font-semibold text-[#6D6879]">Reverse Charge:</span> <span>No</span></p>
         </div>
@@ -753,7 +757,7 @@ function renderFreelancer(
         </div>
         <div className="text-right">
           <p className="text-sm font-bold font-mono">Invoice #{doc.meta.documentNumber}</p>
-          <p className="text-xs text-[#6D6879]">Date: {doc.meta.date}</p>
+          <p className="text-xs text-[#6D6879]">Date: {fd(doc.meta.date)}</p>
         </div>
       </div>
 
@@ -802,7 +806,7 @@ function renderService(
             {docTitle}
           </span>
           <div className="text-lg font-bold text-[#17151F] mt-2">{doc.meta.documentNumber}</div>
-          <div className="text-xs text-[#6D6879]">Date: {doc.meta.date}</div>
+          <div className="text-xs text-[#6D6879]">Date: {fd(doc.meta.date)}</div>
         </div>
       </div>
 
@@ -814,7 +818,7 @@ function renderService(
           <p className="text-[#6D6879]">{doc.customer.address}</p>
         </div>
         <div className="text-right space-y-1">
-          <p><span className="text-[#6D6879]">Due:</span> <span className="font-medium">{doc.meta.dueDate}</span></p>
+          <p><span className="text-[#6D6879]">Due:</span> <span className="font-medium">{fd(doc.meta.dueDate)}</span></p>
           <p><span className="text-[#6D6879]">Terms:</span> <span className="font-medium">{doc.meta.paymentTerms || 'Standard'}</span></p>
         </div>
       </div>
@@ -852,7 +856,7 @@ function renderRetail(
         <p className="text-[#6D6879]">{doc.business.address}</p>
         <p className="text-[#6D6879]">GSTIN: {doc.business.gstin || 'UNREGISTERED'}</p>
         <div className="mt-2 text-xs font-bold uppercase tracking-widest">{docTitle}</div>
-        <div className="text-[#6D6879]">REC #{doc.meta.documentNumber} • {doc.meta.date}</div>
+        <div className="text-[#6D6879]">REC #{doc.meta.documentNumber} • {fd(doc.meta.date)}</div>
       </div>
 
       <div className="border-b border-dashed border-[#E7E0EE] pb-2">

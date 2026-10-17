@@ -273,4 +273,9 @@ export interface AppSettings {
   paperSize: 'a4' | 'a5' | 'letter';
   autoRoundOff: boolean;
   showBranding: boolean;
+  /** Phase 4: digit grouping for amounts ('auto' preserves the previous
+   *  currency-driven behaviour for existing users). */
+  numberGrouping?: 'auto' | 'indian' | 'international';
+  /** Phase 4: date display preference. Stored dates stay 'YYYY-MM-DD'. */
+  dateFormat?: 'ddmmyyyy' | 'mmddyyyy' | 'iso';
 }

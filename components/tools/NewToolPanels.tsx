@@ -6,6 +6,7 @@
  * only present inputs/results.
  */
 import React, { useMemo, useState } from 'react';
+import { formatNumber } from '@/lib/format';
 import { calculateProfitMargin, calculateEMI, tenureToMonths } from '@/lib/business-calculators';
 import {
   CURRENCIES, convertCurrency, searchCurrencies, getBundledRate,
@@ -30,7 +31,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 const INR = (n: number) =>
-  '₹' + (Number.isFinite(n) ? n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
+  '₹' + (Number.isFinite(n) ? formatNumber(n, undefined, true) : '—');
 
 // ----------------------------------------------------------------------
 // Profit Margin Calculator
@@ -229,9 +230,9 @@ export function CurrencyConverterTool() {
         {r.ok ? (
           <>
             <div className="row sp border-b border-[#E7E0EE] dark:border-[#302B38] pb-2">
-              <b>{amount.toLocaleString('en-IN')} {from}</b>
+              <b>{formatNumber(amount, undefined, true)} {from}</b>
               <span className="tot" style={{ fontSize: '18px' }}>
-                {r.converted.toLocaleString('en-IN', { maximumFractionDigits: 2 })} {to}
+                {formatNumber(r.converted)} {to}
               </span>
             </div>
             <Row label="Rate used" value={`1 ${from} = ${r.rateUsed} ${to}`} />

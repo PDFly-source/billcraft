@@ -48,6 +48,13 @@ import { calculateDocument } from '@/lib/calculations';
 import { toYmd } from '@/lib/recurring';
 import { convertDocument as convertDocModel } from '@/lib/sample-data';
 import { SavedDocument, DraftRecord } from '@/types/local';
+import { setNumberGroupingPref, setDateFormatPref } from '@/lib/format';
+import { getNumberingPrefs } from '@/lib/db/repository';
+import {
+  getLockConfig, isLockedOnLoad, markLocked, markUnlocked,
+  type AppLockConfig,
+} from '@/lib/applock';
+import { LockScreen } from '@/components/settings/LockScreen';
 import { Undo2, X } from 'lucide-react';
 
 const SETTINGS_KEY = 'bc-app-settings';
@@ -72,6 +79,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   paperSize: 'a4',
   autoRoundOff: true,
   showBranding: true,
+  numberGrouping: 'auto',   // preserves existing currency-driven grouping
+  dateFormat: 'ddmmyyyy',
 };
 
 export default function BillCraftApp() {
@@ -101,6 +110,59 @@ function AppShell() {
   const [saveBusy, setSaveBusy] = useState(false);
   const [recoverableDraft, setRecoverableDraft] = useState<DraftRecord | null>(null);
   const [noticeSeen, setNoticeSeen] = useState(true);
+  // ---------- App lock (Phase 4, optional PIN) ----------
+  const [lockConfig, setLockConfig] = useState<AppLockConfig | null>(null);
+  const [locked, setLocked] = useState(false);
+  const lockInitRef = React.useRef(false);
+  const lastActivityRef = React.useRef(Date.now());
+
+  // load lock state once: a refresh must never bypass an enabled lock
+  useEffect(() => {
+    if (lockInitRef.current) return;
+    lockInitRef.current = true;
+    void getLockConfig().then((cfg) => {
+      setLockConfig(cfg);
+      if (isLockedOnLoad(cfg)) setLocked(true);
+    });
+  }, []);
+
+  // inactivity auto-lock
+  useEffect(() => {
+    if (!lockConfig?.enabled || !lockConfig.timeoutMinutes) return;
+    const check = () => {
+      if (lastActivityRef.current && Date.now() - lastActivityRef.current >= lockConfig.timeoutMinutes * 60_000) {
+        markLocked();
+        setLocked(true);
+      }
+    };
+    const interval = window.setInterval(check, 10_000);
+    const onActivity = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener('pointerdown', onActivity, { passive: true });
+    window.addEventListener('keydown', onActivity, { passive: true });
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('pointerdown', onActivity);
+      window.removeEventListener('keydown', onActivity);
+    };
+  }, [lockConfig?.enabled, lockConfig?.timeoutMinutes]);
+
+  const handleLockNow = () => {
+    if (!lockConfig?.enabled) return;
+    markLocked();
+    setLocked(true);
+  };
+
+  const handleUnlock = () => {
+    markUnlocked();
+    lastActivityRef.current = Date.now();
+    setLocked(false);
+  };
+
+  const handleLockConfigChange = (cfg: AppLockConfig | null) => {
+    setLockConfig(cfg);
+    if (!cfg) setLocked(false); // lock disabled -> never show lock screen
+  };
+
   const autosaveRev = React.useRef(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -137,6 +199,13 @@ function AppShell() {
   useEffect(() => {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
   }, [settings]);
+
+  // Push display-format preferences into the shared formatting module so
+  // editor, history, dashboard, preview, PDF and share messages stay in sync.
+  useEffect(() => {
+    setNumberGroupingPref(settings.numberGrouping || 'auto');
+    setDateFormatPref(settings.dateFormat || 'ddmmyyyy');
+  }, [settings.numberGrouping, settings.dateFormat]);
 
   // Theme Sync
   useEffect(() => {
@@ -285,7 +354,11 @@ function AppShell() {
     blank.fontFamily = docPrefs.defaultFontFamily || 'sans';
     if (docPrefs.defaultColorTheme) blank.colorTheme = docPrefs.defaultColorTheme as DocumentModel['colorTheme'];
     if (docPrefs.defaultCustomColor && blank.colorTheme === 'custom') blank.customColor = docPrefs.defaultCustomColor;
-    blank.meta.documentNumber = await nextDocumentNumber(type);
+    // Phase 4: numbering respects the auto-increment preference. When it is
+    // off the document starts unnumbered and the user types their own number
+    // in the editor (validated for duplicates at save time).
+    const numbering = await getNumberingPrefs();
+    blank.meta.documentNumber = numbering.autoIncrement ? await nextDocumentNumber(type) : '';
     setDocument(blank);
     setSavedDocId(null);
     setConvertingFromId(null);
@@ -423,6 +496,18 @@ function AppShell() {
       (document.business.name || '').trim() !== '';
     if (!hasContent || document.items.length === 0) {
       showToast('Add client or business details and at least one item before saving');
+      return;
+    }
+    const number = (document.meta.documentNumber || '').trim();
+    if (!number) {
+      showToast('Add a document number first — Settings → Invoice numbering can number documents automatically');
+      return;
+    }
+    // duplicate prevention covers manual numbers too (existing docs unchanged;
+    // editing an already-saved document is allowed to keep its own number)
+    const duplicate = documents.some((d) => d.documentNumber === number && d.id !== savedDocId);
+    if (duplicate) {
+      showToast(`Document number ${number} is already used — invoices must be unique`, 'error');
       return;
     }
     setSaveBusy(true);
@@ -748,6 +833,9 @@ function AppShell() {
               settings={settings}
               onUpdateSettings={(upd) => setSettings((prev) => ({ ...prev, ...upd }))}
               onShowToast={showToast}
+              lockConfig={lockConfig}
+              onLockConfigChange={handleLockConfigChange}
+              onLockNow={handleLockNow}
             />
           )}
 
@@ -772,6 +860,11 @@ function AppShell() {
 
       {/* Floating Toast Notification Stack */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* App Lock screen (Phase 4) — covers everything until verified */}
+      {locked && lockConfig?.enabled && (
+        <LockScreen onUnlocked={handleUnlock} onLockDisabled={handleLockConfigChange} />
+      )}
 
       {/* Cmd + K Command Palette Modal */}
       <CommandPalette
