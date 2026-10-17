@@ -85,7 +85,10 @@ export default function BillCraftApp() {
 function AppShell() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedToolId, setSelectedToolId] = useState<ToolId>('gst');
-  const [document, setDocument] = useState<DocumentModel>(() => createSampleDocument('invoice'));
+  // Production starts blank — no automatic demo data anywhere.
+  // The only sample content is the explicit, opt-in "Sample Document" card
+  // (handleLoadDemo) and template gallery style previews.
+  const [document, setDocument] = useState<DocumentModel>(() => createEmptyDocument('invoice'));
   const [hasStartedEditing, setHasStartedEditing] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(loadPersistedSettings);
   const [isDarkMode, setIsDarkMode] = useState(false);

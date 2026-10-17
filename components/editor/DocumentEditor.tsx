@@ -281,16 +281,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
 
             <div className="row relative" style={{ gap: '10px' }}>
-              {/* Preview Button */}
-              <button
-                type="button"
-                onClick={() => (onOpenPreview ? onOpenPreview() : setIsFullscreenPreviewOpen(true))}
-                className="p-1 rounded-lg text-[#17151F] dark:text-[#F8F5FC] hover:bg-[#FAF6EE] dark:hover:bg-[#281E36] transition cursor-pointer"
-                title="Open Preview"
-              >
-                <BillCraftIcon name="eye" />
-              </button>
-
               {/* More Actions Toggle */}
               <button
                 type="button"
@@ -870,47 +860,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             </div>
           </div>
 
-          {/* 7. Action Buttons — sticky bottom bar on mobile (3D), inline on desktop. */}
-          <div className="hidden lg:flex row pt-2" style={{ gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => (onOpenPreview ? onOpenPreview() : setIsFullscreenPreviewOpen(true))}
-              className="btn o flex-1"
-              aria-label="Open preview"
-            >
-              <BillCraftIcon name="eye" />
-              <span>Preview</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleExportPDF}
-              disabled={isExporting}
-              className="btn flex-[1.2]"
-              aria-label="Export PDF"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Exporting…</span>
-                </>
-              ) : (
-                <>
-                  <BillCraftIcon name="file-preview-outline" />
-                  <span>Export PDF</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* spacer so the sticky bar never covers the last form card on mobile */}
-          <div className="lg:hidden" style={{ height: '76px' }} aria-hidden="true" />
+          {/* spacer so the sticky action bar never covers the last form card */}
+          <div style={{ height: '84px' }} aria-hidden="true" />
         </div>
 
-        {/* Sticky Preview/Export bar (mobile only; desktop keeps inline buttons) */}
-        <div
-          className="lg:hidden fixed left-0 right-0 z-40 md:hidden"
-          style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}
-        >
+        {/* Sticky Preview/Export bar — the single action source on every viewport.
+            .bc-sticky-actions sits above the mobile tab bar (<768px) and at the
+            viewport bottom on md+ where the tab bar is hidden. */}
+        <div className="bc-sticky-actions">
           <div
             className="row"
             style={{
@@ -963,13 +920,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 <BillCraftIcon name="eye" style={{ width: '14px', height: '14px', color: 'var(--pl)' }} />
                 Live Preview
               </span>
-              <button
-                type="button"
-                onClick={() => setIsFullscreenPreviewOpen(true)}
-                className="text-[#593C8F] dark:text-[#A8D5BA] font-bold hover:underline cursor-pointer"
-              >
-                Fullscreen Preview →
-              </button>
             </div>
 
             <div className="max-h-[82vh] overflow-y-auto rounded-xl p-3 bg-[#EFEAF5] dark:bg-[#111015]">
