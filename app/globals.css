@@ -227,6 +227,13 @@ body {
   right: 0;
   z-index: 50;
 }
+/* The bottom tab bar is mobile-only (matches its md:hidden class).
+   Explicit rule required: .bn's display:flex above would otherwise
+   override the Tailwind md:hidden utility on md+ screens. */
+@media (min-width: 768px) {
+  .bn { display: none; }
+}
+
 .dark .bn {
   background: rgba(27, 24, 32, .96);
   border-color: var(--bd);
