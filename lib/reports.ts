@@ -149,9 +149,6 @@ export function topItems(docs: SavedDocument[], limit = 10): TopItemRow[] {
   const minor = (n: number) => Math.round(n * 100);
   for (const d of revenueDocs(docs)) {
     const sign = revenueSign(d);
-    const taxFactor = minor(d.calc.taxableAmount) > 0
-      ? (minor(d.calc.rawTotal) + minor(d.calc.totalTax)) / Math.max(1, minor(d.calc.taxableAmount))
-      : 1;
     for (const it of d.document.items || []) {
       const key = (it.name || '').trim() || '(unnamed)';
       let row = rows.get(key);
@@ -167,7 +164,9 @@ export function topItems(docs: SavedDocument[], limit = 10): TopItemRow[] {
         : Math.min(gross, Number(it.discountValue) || 0);
       const taxable = Math.max(0, gross - disc);
       row.qty += sign * qty;
-      row.revenueMinor += sign * minor(taxable * taxFactor);
+      // Exact line revenue: taxable + that line's own GST (rawTotal semantics:
+      // raw = taxable + tax, so no doc-level gross-up factor is needed).
+      row.revenueMinor += sign * minor(taxable * (1 + (Number(it.taxRate) || 0) / 100));
     }
   }
   return Array.from(rows.values()).sort((a, b) => b.revenueMinor - a.revenueMinor).slice(0, limit);
