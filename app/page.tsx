@@ -47,8 +47,9 @@ import { toPaymentRecords } from '@/types/local';
 import { calculateDocument } from '@/lib/calculations';
 import { toYmd } from '@/lib/recurring';
 import { convertDocument as convertDocModel } from '@/lib/sample-data';
+import { applyProfileDefaults, finalizeDocumentForSave } from '@/lib/document-lifecycle';
 import { SavedDocument, DraftRecord } from '@/types/local';
-import { setNumberGroupingPref, setDateFormatPref } from '@/lib/format';
+import { setNumberGroupingPref, setDateFormatPref, formatDate } from '@/lib/format';
 import { getNumberingPrefs } from '@/lib/db/repository';
 import {
   getLockConfig, isLockedOnLoad, markLocked, markUnlocked,
@@ -318,30 +319,11 @@ function AppShell() {
     blank.showBillCraftBranding = docPrefs.showBranding ?? settings.showBranding;
     // prefill from saved business profile (documents keep their own snapshot)
     if (profile) {
-      blank.business = {
-        ...blank.business,
-        name: profile.businessName || blank.business.name,
-        phone: profile.phone,
-        email: profile.email,
-        website: profile.website || blank.business.website,
-        address: profile.address || blank.business.address,
-        gstin: profile.gstin,
-        pan: profile.pan || blank.business.pan,
-        state: profile.state || blank.business.state,
-        stateCode: profile.stateCode || blank.business.stateCode,
-      };
-      blank.payment = {
-        ...blank.payment,
-        bankName: profile.bankName || blank.payment.bankName,
-        accountHolder: profile.bankAccountHolder || blank.payment.accountHolder,
-        accountNumber: profile.bankAccountNumber || blank.payment.accountNumber,
-        ifsc: profile.bankIfsc || blank.payment.ifsc,
-        upiId: profile.upiId || blank.payment.upiId,
-        notes: profile.paymentInstructions || blank.payment.notes,
-      };
-      blank.terms = profile.defaultPaymentTerms || blank.terms;
+      // Shared, unit-tested helper (lib/document-lifecycle): copies business
+      // + payment defaults and keeps meta.paymentTerms consistent with
+      // terms (Phase 4.2 — no contradictory "due on receipt" summaries).
+      Object.assign(blank, applyProfileDefaults(blank, profile));
       blank.notes = profile.defaultFooterNotes || blank.notes;
-      blank.tax = { ...blank.tax, gstType: profile.defaultGstType };
       if (profile.logoId) blank.business.logo = (await getImage(profile.logoId)) || '';
       if (profile.signatureId) {
         const sig = (await getImage(profile.signatureId)) || '';
@@ -359,6 +341,7 @@ function AppShell() {
     // in the editor (validated for duplicates at save time).
     const numbering = await getNumberingPrefs();
     blank.meta.documentNumber = numbering.autoIncrement ? await nextDocumentNumber(type) : '';
+    invalidatePendingDraftSave(); // a stale timer must never save the OLD doc over this one
     setDocument(blank);
     setSavedDocId(null);
     setConvertingFromId(null);
@@ -387,6 +370,7 @@ function AppShell() {
     setSavedDocId(null);
     setConvertingFromId(null);
     setHasStartedEditing(false);
+    invalidatePendingDraftSave();
     void clearDraft();
     setAutosaveStatus('idle');
     showToast('Document cleared');
@@ -402,6 +386,22 @@ function AppShell() {
   latestDocRef.current = document;
   const latestEditingRef = React.useRef(hasStartedEditing);
   latestEditingRef.current = hasStartedEditing;
+  const pendingSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Invalidate any pending/in-flight draft save WITHOUT writing anything.
+   * Used on discard / clear / open-saved so a stale autosave timer or the
+   * pagehide flush can never recreate a draft the user just removed
+   * (Phase 4.2: fixes "Draft discarded" drafts reappearing after refresh).
+   */
+  const invalidatePendingDraftSave = useCallback(() => {
+    if (pendingSaveTimerRef.current) {
+      clearTimeout(pendingSaveTimerRef.current);
+      pendingSaveTimerRef.current = null;
+    }
+    autosaveRev.current += 1; // any in-flight save's status callback now no-ops
+    latestEditingRef.current = false; // pagehide flush becomes inert immediately
+  }, []);
 
   const retryDraftSave = useCallback(async () => {
     const rev = ++autosaveRev.current;
@@ -438,7 +438,11 @@ function AppShell() {
         if (autosaveRev.current === rev) setAutosaveStatus('error'); // never claim saved on failure
       }
     }, 900); // debounce frequent edits
-    return () => clearTimeout(timer);
+    pendingSaveTimerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (pendingSaveTimerRef.current === timer) pendingSaveTimerRef.current = null;
+    };
   }, [document, hasStartedEditing, autosaveStatus === 'error']);
 
   // Flush unsaved draft on tab hide/close — data loss prevention
@@ -461,12 +465,32 @@ function AppShell() {
   // ---------- Draft recovery (offer restore after refresh / reopen) ----------
   useEffect(() => {
     void getDraft().then((draft) => {
-      if (draft && draft.hasStartedEditing) setRecoverableDraft(draft);
+      if (draft && draft.hasStartedEditing) {
+        // Seed the in-memory revision ABOVE the persisted draft so the
+        // out-of-order guard in saveDraft() can never reject a newer save
+        // after a restart (the counter used to reset to 0 each load).
+        const r = Number(draft.revision);
+        if (Number.isFinite(r) && r > autosaveRev.current) autosaveRev.current = r;
+        setRecoverableDraft(draft);
+      }
     });
     try {
       setNoticeSeen(localStorage.getItem('bc-privacy-notice-seen') === '1');
     } catch { /* private mode */ }
   }, []);
+
+  // Banner timestamp in the user's chosen date format (Phase 4 preference)
+  // + local time; never raw toLocaleString() which ignores the setting.
+  const draftRecoveryTimestamp = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return `${formatDate(ymd)} · ${time}`;
+    } catch {
+      return 'earlier session';
+    }
+  };
 
   const dismissNotice = () => {
     setNoticeSeen(true);
@@ -483,6 +507,12 @@ function AppShell() {
   };
 
   const discardDraft = () => {
+    // 1) kill the pending debounced autosave and any in-flight save
+    invalidatePendingDraftSave();
+    // 2) stop the autosave state machine until a REAL new edit happens
+    setHasStartedEditing(false);
+    setAutosaveStatus('idle');
+    // 3) remove the stored recovery record (kept even if 1/2 raced)
     void clearDraft();
     setRecoverableDraft(null);
     showToast('Draft discarded');
@@ -514,11 +544,16 @@ function AppShell() {
     try {
       const id = savedDocId || crypto.randomUUID();
       const existing = savedDocId ? documents.find((d) => d.id === savedDocId) : undefined;
+      // Phase 4.2: saving finalizes the document — the default DRAFT
+      // watermark must not survive into History/preview/PDF. Custom
+      // watermarks (e.g. PAID) are preserved. Previews never mutate status;
+      // only this explicit save does.
+      const finalized = finalizeDocumentForSave(document);
       const record = {
         id,
         type: document.type,
         documentNumber: document.meta.documentNumber,
-        document,
+        document: finalized,
         calc,
         status: (existing?.status as SavedDocument['status']) ||
           (document.type === 'invoice' ? 'unpaid' : document.type === 'receipt' ? 'issued' : 'issued'),
@@ -549,6 +584,9 @@ function AppShell() {
         showToast(savedDocId ? `Updated ${record.documentNumber}` : `Saved to History: ${record.documentNumber}`);
       }
       setSavedDocId(id);
+      // keep the editor in sync with the finalized snapshot so further
+      // edits/exports start from the saved (non-draft) version
+      setDocument(finalized);
       await refresh();
     } catch (err) {
       showToast(`Save failed: ${err instanceof Error ? err.message : 'storage error'}`);
@@ -564,6 +602,7 @@ function AppShell() {
     setSavedDocId(saved.id);
     setConvertingFromId(null);
     setHasStartedEditing(true);
+    invalidatePendingDraftSave();
     void clearDraft();
     setActiveTab('editor');
     showToast(`Opened ${saved.documentNumber}`);
@@ -665,15 +704,19 @@ function AppShell() {
 
       {/* Draft recovery banner (Feature 6) */}
       {recoverableDraft && (
-        <div className="fixed top-16 inset-x-2 z-[65] rounded-xl border border-[#593C8F] bg-[#F6F2FA] dark:bg-[#241D31] dark:border-[#593C8F]/50 p-2.5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-200" data-testid="draft-recovery">
-          <div className="row sp" style={{ gap: 8 }}>
-            <Undo2 className="w-4 h-4 text-[#593C8F] dark:text-[#A8D5BA] shrink-0" />
+        <div className="fixed top-16 inset-x-2 z-[65] rounded-xl border border-[#593C8F] bg-[#F6F2FA] dark:bg-[#241D31] dark:border-[#593C8F]/50 p-2.5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-200" data-testid="draft-recovery" role="status">
+          <div className="flex items-start gap-2">
+            <Undo2 className="w-4 h-4 text-[#593C8F] dark:text-[#A8D5BA] shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <div className="text-[10.5px] font-bold text-[#17151F] dark:text-[#F8F5FC]">Unsaved draft found ({new Date(recoverableDraft.savedAt).toLocaleString()})</div>
+              <div className="text-[10.5px] font-bold text-[#17151F] dark:text-[#F8F5FC] break-words">
+                Unsaved draft found — {draftRecoveryTimestamp(recoverableDraft.savedAt)}
+              </div>
               <div className="text-[9px] text-[#6D6879] dark:text-[#A39BB0]">Recover it or discard — saved documents are in History.</div>
             </div>
-            <button type="button" onClick={discardDraft} className="p-1 rounded-lg hover:bg-[#593C8F]/10" aria-label="Discard draft"><X className="w-3.5 h-3.5 text-[#6D6879]" /></button>
-            <button type="button" onClick={restoreDraft} className="btn shrink-0" style={{ fontSize: 10 }}>Restore draft</button>
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+              <button type="button" onClick={discardDraft} className="p-2 -m-1 rounded-lg hover:bg-[#593C8F]/10" aria-label="Discard draft"><X className="w-3.5 h-3.5 text-[#6D6879]" /></button>
+              <button type="button" onClick={restoreDraft} className="btn shrink-0" style={{ fontSize: 10, padding: '4px 10px' }}>Restore</button>
+            </div>
           </div>
         </div>
       )}
@@ -778,6 +821,7 @@ function AppShell() {
               saveBusy={saveBusy}
               autosaveStatus={autosaveStatus}
               onRetrySave={() => void retryDraftSave()}
+              isSaved={savedDocId !== null}
               onOpenPreview={() => setActiveTab('preview')}
             />
           )}

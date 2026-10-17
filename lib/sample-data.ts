@@ -64,7 +64,7 @@ export function createEmptyDocument(type: DocumentType = 'invoice', currency: Cu
       validUntil: getFutureDateString(30),
       referenceNumber: '',
       placeOfSupply: 'Assam (18)',
-      paymentTerms: 'Payment due on receipt',
+      paymentTerms: 'Payment due within 14 days',
       receiptFor: 'Services Rendered',
       amountReceived: 0,
       ...(type === 'purchase_order'

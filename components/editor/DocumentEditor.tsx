@@ -63,6 +63,8 @@ interface DocumentEditorProps {
   saveBusy?: boolean;
   autosaveStatus?: 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
   onRetrySave?: () => void;
+  /** True once this document is saved to History (Phase 4.2 draft badge). */
+  isSaved?: boolean;
 }
 
 /** The editor's own live-preview sheet id (Phase 4.1). */
@@ -81,6 +83,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   saveBusy = false,
   autosaveStatus = 'idle',
   onRetrySave,
+  isSaved,
 }) => {
   const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false);
   const [isHealthCheckOpen, setIsHealthCheckOpen] = useState(false);
@@ -283,6 +286,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                 {autosaveStatus === 'error' && <><CloudOff className="w-2.5 h-2.5" />Save failed</>}
                 {(autosaveStatus === 'unsaved' || autosaveStatus === 'idle') && <>Unsaved</>}
               </span>
+              {/* Phase 4.2: document lifecycle badge — Draft until saved to
+                  History; flips to Saved the moment it is (and the default
+                  DRAFT watermark is stripped from the saved snapshot). */}
+              {isSaved !== undefined && (
+                <span
+                  data-testid="doc-lifecycle-badge"
+                  className={`inline-flex items-center text-[8.5px] font-bold px-1.5 py-0.5 rounded-full border tracking-wide uppercase ${
+                    isSaved
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                  }`}
+                >
+                  {isSaved ? 'Saved' : 'Draft'}
+                </span>
+              )}
             </div>
 
             <div className="row relative" style={{ gap: '10px' }}>
