@@ -87,6 +87,24 @@ export interface BankAccountRecord extends Timestamped {
   paymentInstructions: string;
 }
 
+/** A recurring document series (Phase 4). The template is a full
+ *  DocumentModel snapshot — history documents are never mutated by the
+ *  series, and generating never touches historical records. Stored in kv. */
+export interface RecurringSeriesRecord extends Timestamped {
+  id: string;
+  name: string;             // user label, e.g. "Acme monthly retainer"
+  frequency: 'monthly' | 'quarterly' | 'yearly';
+  nextDueDate: string;      // YYYY-MM-DD — next expected generation
+  active: boolean;
+  lastGeneratedId: string | null;
+  lastGeneratedDate: string; // YYYY-MM-DD or ''
+  /** Document type to generate (normally 'invoice'). */
+  type: DocumentType;
+  /** Immutable template snapshot (items, customer, business, style). */
+  document: DocumentModel;
+  clientId: string | null;
+}
+
 /** Reusable clause saved by the user (Phase 3). Stored in kv. */
 export interface ClauseRecord extends Timestamped {
   id: string;
@@ -166,6 +184,7 @@ export interface BillCraftBackup {
     preferences: Partial<DocumentPreferences> | null;
     bankAccounts?: BankAccountRecord[];   // v2+
     clauses?: ClauseRecord[];            // v2+
+    recurringSeries?: RecurringSeriesRecord[]; // v2+ (Phase 4)
   };
 }
 
@@ -182,6 +201,7 @@ export interface RestorePreview {
     profileReplaced: boolean;
     bankAccounts?: { added: number; updated: number };
     clauses?: { added: number; updated: number };
+    recurringSeries?: { added: number; updated: number };
   };
 }
 

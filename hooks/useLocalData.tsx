@@ -9,9 +9,12 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   ClientRecord, ProductRecord, SavedDocument, BusinessProfileRecord,
   DocumentPreferences, PaymentRecord, DocumentStatus, DataCounts, StorageStatus,
+  RecurringSeriesRecord,
 } from '@/types/local';
 import * as repo from '@/lib/db/repository';
 import { buildDashboard, DashboardSummary } from '@/lib/finance';
+import { materializeFromSeries, advanceAfterGeneration } from '@/lib/recurring';
+import { calculateDocument } from '@/lib/calculations';
 
 interface LocalDataState {
   ready: boolean;
@@ -19,6 +22,7 @@ interface LocalDataState {
   clients: ClientRecord[];
   products: ProductRecord[];
   documents: SavedDocument[];
+  recurring: RecurringSeriesRecord[];
   profile: BusinessProfileRecord | null;
   docPrefs: DocumentPreferences;
   dashboard: DashboardSummary;
@@ -33,6 +37,12 @@ interface LocalDataState {
   deleteProduct: (id: string) => Promise<void>;
   // documents
   saveDocument: (doc: Parameters<typeof repo.saveDocument>[0]) => Promise<SavedDocument>;
+  // recurring series (Phase 4)
+  saveRecurring: (input: Partial<RecurringSeriesRecord> & { id?: string }) => Promise<RecurringSeriesRecord>;
+  deleteRecurring: (id: string) => Promise<void>;
+  /** Generate this series' next document straight into History.
+   *  Returns the saved document, or null when the series is inactive. */
+  generateSeries: (seriesId: string) => Promise<SavedDocument | null>;
   deleteDocument: (id: string) => Promise<void>;
   setDocumentStatus: (id: string, status: DocumentStatus) => Promise<SavedDocument>;
   addPayment: (docId: string, payment: Omit<PaymentRecord, 'id' | 'createdAt' | 'updatedAt'>) => Promise<SavedDocument>;
@@ -54,6 +64,7 @@ export const LocalDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [documents, setDocuments] = useState<SavedDocument[]>([]);
+  const [recurring, setRecurring] = useState<RecurringSeriesRecord[]>([]);
   const [profile, setProfile] = useState<BusinessProfileRecord | null>(null);
   const [docPrefs, setDocPrefs] = useState<DocumentPreferences>(repo.DEFAULT_DOC_PREFS);
   const [counts, setCounts] = useState<DataCounts | null>(null);
@@ -61,11 +72,12 @@ export const LocalDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const refresh = useCallback(async () => {
     try {
-      const [c, p, d, prof, prefs, cnt, st] = await Promise.all([
+      const [c, p, d, prof, prefs, cnt, st, rec] = await Promise.all([
         repo.listClients(), repo.listProducts(), repo.listDocuments(),
         repo.getProfile(), repo.getDocPrefs(), repo.getDataCounts(), repo.getStorageStatus(),
+        repo.listRecurringSeries(),
       ]);
-      setClients(c); setProducts(p); setDocuments(d);
+      setClients(c); setProducts(p); setDocuments(d); setRecurring(rec);
       setProfile(prof); setDocPrefs(prefs); setCounts(cnt); setStorage(st);
       setStorageError(st.available ? null : (st.error || 'IndexedDB is unavailable'));
     } catch (err) {
@@ -88,13 +100,43 @@ export const LocalDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const value = useMemo<LocalDataState>(() => ({
-    ready, storageError, clients, products, documents, profile, docPrefs, counts, storage,
+    ready, storageError, clients, products, documents, recurring, profile, docPrefs, counts, storage,
     dashboard: buildDashboard(documents),
     saveClient: (input) => wrap(async () => { await repo.saveClient(input); }).then(() => repoLastClient(input)),
     deleteClient: (id) => wrap(async () => { await repo.deleteClient(id); }),
     saveProduct: (input) => wrap(async () => { await repo.saveProduct(input); }).then(() => undefined as unknown as ProductRecord),
     deleteProduct: (id) => wrap(async () => { await repo.deleteProduct(id); }),
     saveDocument: (doc) => wrap(async () => { await repo.saveDocument(doc); }).then(() => repo.getDocument(doc.id || '') as Promise<SavedDocument>),
+    saveRecurring: (input) => wrap(async () => { await repo.saveRecurringSeries(input); }).then(() => repo.listRecurringSeries()).then((list) => list.find((s) => (input.id ? s.id === input.id : true)) || list[list.length - 1]),
+    deleteRecurring: (id) => wrap(async () => { await repo.deleteRecurringSeries(id); }),
+    generateSeries: async (seriesId) => {
+      const list = await repo.listRecurringSeries();
+      const series = list.find((s) => s.id === seriesId);
+      if (!series || !series.active) return null;
+      const number = await repo.nextDocumentNumber(series.type);
+      const doc = materializeFromSeries(series, number);
+      const calc = calculateDocument(doc);
+      const saved = await repo.saveDocument({
+        id: crypto.randomUUID(),
+        type: doc.type,
+        documentNumber: doc.meta.documentNumber,
+        document: doc,
+        calc,
+        status: doc.type === 'invoice' ? 'unpaid' as const : 'issued' as const,
+        payments: [],
+        clientId: series.clientId,
+        clientName: doc.customer.company || doc.customer.name || '',
+        issueDate: doc.meta.date,
+        dueDate: doc.type === 'invoice' || doc.type === 'proforma' ? doc.meta.dueDate : '',
+        totalMinor: Math.round(calc.grandTotal * 100),
+        amountPaidMinor: 0,
+        convertedFromId: null,
+        convertedToId: null,
+      });
+      await repo.saveRecurringSeries(advanceAfterGeneration(series, saved.id));
+      await refresh();
+      return saved;
+    },
     deleteDocument: (id) => wrap(async () => { await repo.deleteDocument(id); }),
     setDocumentStatus: (id, status) => wrap(async () => { await repo.setDocumentStatus(id, status); }).then(() => repo.getDocument(id) as Promise<SavedDocument>),
     addPayment: (docId, payment) => wrap(async () => { await repo.addPayment(docId, payment); }).then(() => repo.getDocument(docId) as Promise<SavedDocument>),
@@ -104,7 +146,7 @@ export const LocalDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refresh,
     clearCategory: (cat) => wrap(async () => { await repo.clearCategory(cat); }),
     clearAllData: () => wrap(async () => { await repo.clearAllData(); }),
-  }), [ready, storageError, clients, products, documents, profile, docPrefs, counts, storage, wrap, refresh]);
+  }), [ready, storageError, clients, products, documents, recurring, profile, docPrefs, counts, storage, wrap, refresh]);
 
   return <LocalDataContext.Provider value={value}>{children}</LocalDataContext.Provider>;
 };

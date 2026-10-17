@@ -14,8 +14,10 @@ import { formatCurrency } from '@/lib/currency';
 import { downloadPDF } from '@/lib/pdf-generator';
 import {
   Search, X, Trash2, Copy, FileText, Printer, Download, ArrowRightLeft,
-  AlertTriangle, Wallet, Pencil, Ban, ChevronDown,
+  AlertTriangle, Wallet, Pencil, Ban, ChevronDown, Repeat,
 } from 'lucide-react';
+
+import { RecurringSection } from '@/components/data/RecurringSection';
 
 export interface HistoryViewProps {
   onOpenDocument: (doc: SavedDocument) => void;
@@ -70,6 +72,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const [confirmDelete, setConfirmDelete] = useState<SavedDocument | null>(null);
   const [paymentDoc, setPaymentDoc] = useState<SavedDocument | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [recurringSeed, setRecurringSeed] = useState<SavedDocument | null>(null);
 
   const list = useMemo(() => {
     let l = searchDocuments(documents, query);
@@ -150,6 +153,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <div className="text-[11px] text-red-700 dark:text-red-300">Local storage unavailable ({storageError}). History cannot load.</div>
         </div>
       )}
+
+      <RecurringSection onShowToast={onShowToast} seedDoc={recurringSeed} onSeedConsumed={() => setRecurringSeed(null)} />
 
       <div className="row sp" style={{ gap: 8 }}>
         <div className="row flex-1" style={{ background: '#fff', border: '1px solid var(--bd)', borderRadius: 12, padding: '6px 10px', gap: 6 }}>
@@ -245,6 +250,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 <div className="row flex-wrap border-t border-[#EFE9F5] dark:border-[#2D2736] pt-2" style={{ gap: 4 }}>
                   <button type="button" onClick={() => onOpenDocument(d)} className="p-1.5 rounded-lg hover:bg-[#F1ECF8] dark:hover:bg-[#281E36] transition" aria-label="Open in editor" title="Open & edit"><Pencil className="w-3.5 h-3.5 text-[#593C8F] dark:text-[#A8D5BA]" /></button>
                   <button type="button" onClick={() => onDuplicateDocument(d)} className="p-1.5 rounded-lg hover:bg-[#F1ECF8] dark:hover:bg-[#281E36] transition" aria-label="Duplicate as new draft" title="Duplicate"><Copy className="w-3.5 h-3.5 text-[#593C8F] dark:text-[#A8D5BA]" /></button>
+                  {(d.type === 'invoice' || d.type === 'proforma') && d.status !== 'cancelled' && (
+                    <button type="button" onClick={() => setRecurringSeed(d)} className="p-1.5 rounded-lg hover:bg-[#F1ECF8] dark:hover:bg-[#281E36] transition" aria-label="Make recurring" title="Make recurring"><Repeat className="w-3.5 h-3.5 text-[#593C8F] dark:text-[#A8D5BA]" /></button>
+                  )}
                   {(d.type === 'quotation' || d.type === 'estimate') && d.status !== 'converted' && (
                     <button type="button" onClick={() => onConvertDocument(d)} className="p-1.5 rounded-lg hover:bg-[#F1ECF8] dark:hover:bg-[#281E36] transition" aria-label="Convert to invoice" title="Convert to invoice"><ArrowRightLeft className="w-3.5 h-3.5 text-[#593C8F] dark:text-[#A8D5BA]" /></button>
                   )}

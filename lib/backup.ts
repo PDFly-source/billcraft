@@ -13,10 +13,10 @@
 import {
   BillCraftBackup, RestorePreview, ClientRecord, ProductRecord,
   SavedDocument, BusinessProfileRecord, BankAccountRecord, ClauseRecord,
-  LOCAL_SCHEMA_VERSION,
+  RecurringSeriesRecord, LOCAL_SCHEMA_VERSION,
 } from '@/types/local';
 import { STORES, withStores, requestAll, putRecord, clearStore } from './db/idb';
-import { kvGet, kvSet, getProfile, getDataCounts, listBankAccounts, listClauses } from './db/repository';
+import { kvGet, kvSet, getProfile, getDataCounts, listBankAccounts, listClauses, listRecurringSeries } from './db/repository';
 
 const MAX_BACKUP_BYTES = 60 * 1024 * 1024; // 60 MB safety limit
 
@@ -34,10 +34,11 @@ export async function buildBackup(): Promise<BillCraftBackup> {
     requestAll<{ id: string; dataUrl: string }>(STORES.images),
     getProfile(),
   ]);
-  const [prefsRaw, bankAccounts, clauses] = await Promise.all([
+  const [prefsRaw, bankAccounts, clauses, recurringSeries] = await Promise.all([
     kvGet<Record<string, unknown>>('document-preferences'),
     listBankAccounts(),
     listClauses(),
+    listRecurringSeries(),
   ]);
   const prefs = prefsRaw || null;
   return {
@@ -60,6 +61,7 @@ export async function buildBackup(): Promise<BillCraftBackup> {
       preferences: prefs,
       bankAccounts,  // v2
       clauses,       // v2
+      recurringSeries, // v2 (Phase 4)
     },
   };
 }
@@ -176,6 +178,14 @@ export function validateBackup(input: unknown): ValidationResult {
       validateTimestamped(a, `bankAccounts[${i}]`, errs);
     });
   }
+  if (data.recurringSeries !== undefined) {
+    if (!Array.isArray(data.recurringSeries)) errs.push('data.recurringSeries must be an array');
+    else data.recurringSeries.forEach((s, i) => {
+      const o = s as Record<string, unknown>;
+      if (typeof o.id !== 'string' || !o.id) errs.push(`recurringSeries[${i}]: missing id`);
+      validateTimestamped(s, `recurringSeries[${i}]`, errs);
+    });
+  }
   if (data.clauses !== undefined) {
     if (!Array.isArray(data.clauses)) errs.push('data.clauses must be an array');
     else data.clauses.forEach((c, i) => {
@@ -228,7 +238,7 @@ export async function previewRestore(backup: BillCraftBackup): Promise<RestorePr
     return { added, updated, keptLocal };
   };
   const localProfile = await getProfile();
-  const [localAccounts, localClauses] = await Promise.all([listBankAccounts(), listClauses()]);
+  const [localAccounts, localClauses, localSeries] = await Promise.all([listBankAccounts(), listClauses(), listRecurringSeries()]);
   return {
     ok: true,
     schemaVersion: backup.schemaVersion,
@@ -245,6 +255,7 @@ export async function previewRestore(backup: BillCraftBackup): Promise<RestorePr
       profileReplaced: !!backup.data.businessProfile && (!localProfile || newer(localProfile, backup.data.businessProfile as BusinessProfileRecord)),
       bankAccounts: sum(localAccounts, backup.data.bankAccounts || []),
       clauses: sum(localClauses, backup.data.clauses || []),
+      recurringSeries: sum(localSeries, backup.data.recurringSeries || []),
     },
   };
 }
@@ -372,6 +383,15 @@ export async function applyRestore(backup: BillCraftBackup, mode: 'merge' | 'rep
       if (!existing || newer(existing, c)) byId.set(c.id, c);
     }
     await kvSet('my-clauses', Array.from(byId.values()));
+  }
+  if (Array.isArray(backup.data.recurringSeries)) {
+    const local = await listRecurringSeries();
+    const byId = new Map(local.map((s: RecurringSeriesRecord) => [s.id, s]));
+    for (const s of backup.data.recurringSeries) {
+      const existing = byId.get(s.id);
+      if (!existing || newer(existing, s)) byId.set(s.id, s);
+    }
+    await kvSet('recurring-series', Array.from(byId.values()));
   }
 
   // verify

@@ -45,6 +45,7 @@ import { PrivacyNoticeCard, PRIVACY_NOTICE_TEXT } from '@/components/data/DataSe
 import { nextDocumentNumber, getDraft, saveDraft, clearDraft, getImage } from '@/lib/db/repository';
 import { toPaymentRecords } from '@/types/local';
 import { calculateDocument } from '@/lib/calculations';
+import { toYmd } from '@/lib/recurring';
 import { convertDocument as convertDocModel } from '@/lib/sample-data';
 import { SavedDocument, DraftRecord } from '@/types/local';
 import { Undo2, X } from 'lucide-react';
@@ -90,7 +91,7 @@ function AppShell() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [splashState, setSplashState] = useState<'show' | 'fade' | 'done'>('show');
-  const { profile, docPrefs, saveDocPrefs, saveDocument, setDocumentStatus, documents, refresh } = useLocalData();
+  const { profile, docPrefs, saveDocPrefs, saveDocument, setDocumentStatus, documents, recurring, ready, refresh } = useLocalData();
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
   const [convertingFromId, setConvertingFromId] = useState<string | null>(null);
   const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>('idle');
@@ -108,6 +109,22 @@ function AppShell() {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   }, []);
+
+  const recurringReminded = React.useRef(false);
+
+  // Local recurring reminder: in-app toast + optional Web Notification
+  // (only when the user has ALREADY granted permission — never prompts).
+  React.useEffect(() => {
+    if (!ready || recurringReminded.current) return;
+    const due = (recurring || []).filter((s) => s.active && !!s.nextDueDate && s.nextDueDate <= toYmd(new Date()));
+    if (due.length === 0) return;
+    recurringReminded.current = true;
+    const msg = `${due.length} recurring invoice${due.length === 1 ? ' is' : 's are'} due — History → Recurring to generate`;
+    showToast(msg, 'info');
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try { new Notification('BillCraft recurring invoice', { body: msg }); } catch { /* notification API may reject */ }
+    }
+  }, [ready, recurring, showToast]);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

@@ -11,7 +11,7 @@ import {
   ClientRecord, ProductRecord, SavedDocument, BusinessProfileRecord,
   DocumentPreferences, DraftRecord, LOCAL_SCHEMA_VERSION, StorageStatus,
   PaymentRecord, DocumentStatus, BankAccountRecord, ClauseRecord,
-} from '@/types/local';
+  RecurringSeriesRecord } from '@/types/local';
 import { STORES, withStores, requestAll, requestByKey, putRecord, deleteRecord, clearStore, countStore, getDB } from './idb';
 
 const norm = (s: string) => (s || '').trim().toLowerCase();
@@ -347,6 +347,41 @@ export async function saveClause(input: Partial<ClauseRecord> & { id?: string })
 export async function deleteClause(id: string): Promise<void> {
   const list = await listClauses();
   await kvSet('my-clauses', list.filter((c) => c.id !== id));
+}
+
+// ---------- Recurring series (Phase 4) ----------
+
+export async function listRecurringSeries(): Promise<RecurringSeriesRecord[]> {
+  const list = await kvGet<RecurringSeriesRecord[]>('recurring-series');
+  return Array.isArray(list) ? list : [];
+}
+
+export async function saveRecurringSeries(input: Partial<RecurringSeriesRecord> & { id?: string }): Promise<RecurringSeriesRecord> {
+  const list = await listRecurringSeries();
+  const existing = input.id ? list.find((s) => s.id === input.id) : undefined;
+  const rec: RecurringSeriesRecord = {
+    id: existing?.id || input.id || crypto.randomUUID(),
+    name: (input.name ?? existing?.name ?? 'Recurring invoice').trim() || 'Recurring invoice',
+    frequency: input.frequency ?? existing?.frequency ?? 'monthly',
+    nextDueDate: input.nextDueDate ?? existing?.nextDueDate ?? '',
+    active: input.active ?? existing?.active ?? true,
+    lastGeneratedId: input.lastGeneratedId ?? existing?.lastGeneratedId ?? null,
+    lastGeneratedDate: input.lastGeneratedDate ?? existing?.lastGeneratedDate ?? '',
+    type: input.type ?? existing?.type ?? 'invoice',
+    document: input.document ?? existing?.document as RecurringSeriesRecord['document'],
+    clientId: input.clientId ?? existing?.clientId ?? null,
+    createdAt: existing?.createdAt || '',
+    updatedAt: '',
+  };
+  const stamped = withTimestamps(rec) as RecurringSeriesRecord;
+  const next = existing ? list.map((s) => (s.id === stamped.id ? stamped : s)) : [...list, stamped];
+  await kvSet('recurring-series', next);
+  return stamped;
+}
+
+export async function deleteRecurringSeries(id: string): Promise<void> {
+  const list = await listRecurringSeries();
+  await kvSet('recurring-series', list.filter((s) => s.id !== id));
 }
 
 // ---------- Images ----------
