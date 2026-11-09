@@ -1,6 +1,6 @@
 {
   "name": "billcraft",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Premium privacy-first business document studio for invoices, quotations, receipts and GST calculations. No account, no backend, no cloud document storage.",
   "scripts": {
