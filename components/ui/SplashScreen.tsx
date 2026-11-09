@@ -105,7 +105,7 @@ export const SplashScreen: React.FC<{ fading: boolean }> = ({ fading }) => (
       data-splash="billcraft"
     >
       <div className="bs-rp bs-cc" />
-      <div className="bs-rp bs-cc" style={ animationDelay: '1.35s' } />
+      <div className="bs-rp bs-cc" style={{ animationDelay: '1.35s' }} />
       <div className="bs-ctr">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="bs-mk" src="/brand/splash/mark.jpg" alt="" width={130} height={130} />
